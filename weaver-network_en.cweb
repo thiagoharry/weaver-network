@@ -1,0 +1,144 @@
+\input tex/epsf.tex
+\font\sixteen=cmbx15
+\font\twelve=cmr12
+\font\fonteautor=cmbx12
+\font\fonteemail=cmtt10
+\font\twelvenegit=cmbxti12
+\font\twelvebold=cmbx12
+\font\trezebold=cmbx13
+\font\twelveit=cmsl12
+\font\monodoze=cmtt12
+\font\it=cmti12
+\voffset=0,959994cm % 3,5cm de margem superior e 2,5cm inferior
+\parskip=6pt
+
+\def\titulo#1{{\noindent\sixteen\hbox to\hsize{\hfill#1\hfill}}}
+\def\autor#1{{\noindent\fonteautor\hbox to\hsize{\hfill#1\hfill}}}
+\def\email#1{{\noindent\fonteemail\hbox to\hsize{\hfill#1\hfill}}}
+\def\negrito#1{{\twelvebold#1}}
+\def\italico#1{{\twelveit#1}}
+\def\monoespaco#1{{\monodoze#1}}
+
+\long\def\abstract#1{\parshape 10 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+\noindent{{\twelvenegit Abstract: }\twelveit #1}}
+
+\def\resumo#1{\parshape  10 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+\noindent{{\twelvenegit Resumo: }\twelveit #1}}
+
+\def\secao#1{\vskip12pt\noindent{\trezebold#1}\parshape 1 0cm 15cm}
+\def\subsecao#1{\vskip12pt\noindent{\twelvebold#1}}
+\def\subsubsecao#1{\vskip12pt\noindent{\negrito{#1}}}
+\def\referencia#1{\vskip6pt\parshape 5 0cm 15cm 0.5cm 14.5cm 0.5cm 14.5cm
+0.5cm 14.5cm 0.5cm 14.5cm {\twelve\noindent#1}}
+
+%@* .
+
+\twelve
+\vskip12pt
+\titulo{Weaver Network Module}
+\vskip12pt
+\autor{Thiago Leucz Astrizi}
+\vskip6pt
+\email{thiago@@bitbitbit.com.br}
+\vskip6pt
+
+\abstract{This article presents an implementation, using literate
+programming, of the network code required for secure synchronization
+between different instances of a game or interactive software built on
+the Weaver game engine. It covers both the message exchange mechanisms
+and the cryptographic components responsible for ensuring
+confidentiality, integrity, and mutual authentication among the
+participating programs.}
+
+\secao{1. Introduction}
+
+\subsecao{1.1. Exported Functions}
+
+The network module of the Weaver game engine defines and exports a set
+of functions that can be used externally. We will list these functions
+and their signatures here.
+
+First, the initialization and shutdown functions. The initialization
+function must be the first one called, before any other function
+listed below. The shutdown function must be the last: after invoking
+it, no other network function should be called.
+
+@<Function Declaration (network.h)@>=
+void _Winit_network(void);
+void _Wfinish_network(void);
+@
+
+
+\subsecao{1.2. Literate Programming}
+
+Our API will be written using the literate programming technique,
+proposed by Knuth on [Knuth, 1984]. It consist in writting a computer
+program explaining didactically in a text what is being done while
+presenting the code. The program is compiled extracting the computer
+code directly from the didactical text. The code shall be presented in
+a way and order such that it is best for explaining for a human. Not
+how it would be easier to compile.
+
+Using this technique, this document is not a simple documentation for
+our code. It is the code by itself. The part that will be extracted to
+be compiled can be identified by a gray background. We begin each
+piece of code by a title that names it. For example, immediately
+before this subsection we presented a series of function
+declarations. And how one could deduct by the title, most of them will
+be positioned in the file \monoespaco{interface.h}.
+
+We show below the structure of the file \monoespaco{interface.h}:
+
+
+@(src/interface.h@>=
+#ifndef __WEAVER_INTERFACE
+#define __WEAVER_INTERFACE
+#ifdef __cplusplus
+extern "C" {
+#endif
+//@<Include General Headers (network.h)@>
+//@<General Macros (network.h)@>
+//@<Data Structures (network.h)@>
+@<Function Declaration (network.h)@>
+#ifdef __cplusplus
+}
+#endif
+#endif
+@
+
+The code above shows the default boilerplate for defining a header in
+our C API. The first two lines and the last one are macros that ensure
+the header is not included more than once in a single compilation
+unit. Lines 3, 4, 5, and the three lines before the last one make the
+header compatible with C++ code. These lines tell the compiler that we
+are using C code and, therefore, it can apply optimizations assuming
+that no C++-specific features---such as operator overloading---will be
+used.
+
+Next, we include a header that allows us to use boolean variables. You
+may also notice some parts highlighted in red. One of them is labeled
+``Function Declaration (interface.h)'', the same title used for most of
+the code declared earlier. This means that all previously defined code
+blocks with that title will be inserted at this point in the file. The
+other red-highlighted parts represent code that we will define in the
+following sections.
+
+If you want to understand how the \monoespaco{interface.c} file
+relates to this header, its structure is as follows:
+
+@(src/interface.c@>=
+#include "interface.h"
+//@<Local Headers (interface.c)@>
+//@<Local Macros (interface.c)@>
+//@<Local Data Structures (interface.c)@>
+//@<Local Variables (interface.c)@>
+//@<Auxiliary Local Functions (interface.c)@>
+//@<API Functions Definition (interface.c)@>
+@
+
+All the code presented in this document will be placed in one of these
+two files. No other files will be created.

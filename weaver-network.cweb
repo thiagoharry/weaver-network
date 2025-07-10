@@ -1,0 +1,199 @@
+\font\sixteen=cmbx15
+\font\twelve=cmr12
+\font\fonteautor=cmbx12
+\font\fonteemail=cmtt10
+\font\twelvenegit=cmbxti12
+\font\twelvebold=cmbx12
+\font\trezebold=cmbx13
+\font\twelveit=cmsl12
+\font\monodoze=cmtt12
+\font\it=cmti12
+\voffset=0,959994cm % 3,5cm de margem superior e 2,5cm inferior
+\parskip=6pt
+
+\def\titulo#1{{\noindent\sixteen\hbox to\hsize{\hfill#1\hfill}}}
+\def\autor#1{{\noindent\fonteautor\hbox to\hsize{\hfill#1\hfill}}}
+\def\email#1{{\noindent\fonteemail\hbox to\hsize{\hfill#1\hfill}}}
+\def\negrito#1{{\twelvebold#1}}
+\def\italico#1{{\twelveit#1}}
+\def\monoespaco#1{{\monodoze#1}}
+
+\long\def\abstract#1{\parshape 10 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+\noindent{{\twelvenegit Abstract: }\twelveit #1}}
+
+\def\resumo#1{\parshape  10 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+0.8cm 13.4cm 0.8cm 13.4cm 0.8cm 13.4cm
+\noindent{{\twelvenegit Resumo: }\twelveit #1}}
+
+\def\secao#1{\vskip12pt\noindent{\trezebold#1}\parshape 1 0cm 15cm}
+\def\subsecao#1{\vskip12pt\noindent{\twelvebold#1}}
+\def\subsubsecao#1{\vskip12pt\noindent{\negrito{#1}}}
+\def\referencia#1{\vskip6pt\parshape 5 0cm 15cm 0.5cm 14.5cm 0.5cm 14.5cm
+0.5cm 14.5cm 0.5cm 14.5cm {\twelve\noindent#1}}
+
+%@* .
+
+\twelve
+\vskip12pt
+\titulo{Módulo de Rede Weaver}
+\vskip12pt
+\autor{Thiago Leucz Astrizi}
+\vskip6pt
+\email{thiago@@bitbitbit.com.br}
+\vskip6pt
+
+\abstract{This article presents an implementation, using literate
+programming, of the network code required for secure synchronization
+between different instances of a game or interactive software built on
+the Weaver game engine. It covers both the message exchange mechanisms
+and the cryptographic components responsible for ensuring
+confidentiality, integrity, and mutual authentication among the
+participating programs.}
+
+\vskip 0.5cm plus 3pt minus 3pt
+
+\resumo{Este artigo apresenta uma implementação, utilizando
+programação literária, do código de rede necessário para a
+sincronização segura entre diferentes instâncias de um jogo ou
+software interativo baseado no motor de jogos Weaver. São abordados
+tanto os mecanismos de troca de mensagens quanto os componentes
+criptográficos responsáveis por garantir confidencialidade,
+integridade e autenticação mútua entre os programas participantes.}
+
+\secao{1. Introdução}
+
+\subsecao{1.1. Funções a Serem Exportadas}
+
+O módulo de rede do motor de jogos Weaver atua definindo e exportando
+uma série de funções que podem ser usadas externamente. Listaremos
+aqui as funções e suas assinaturas.
+
+Primeiro as funções de inicialização e finalização. A inicialização
+deve ser a primeira função a ser chamada, antes de qualquer outra
+função a ser mostrada abaixo. A finalização deve ser a última: após
+invocar ela não devemos mais chamar qualquer outra função de rede.
+
+@<Declaração de Função (network.h)@>+=
+void _Winit_network(void);
+void _Wfinish_network(void);
+@
+
+\subsecao{1.2. Programação Literária}
+
+Nosso código será escrito usando técnica de programação literária
+proposta por Knuth em [KNUTH, 1984]. Ela consiste em escrever um
+programa de computador explicando didaticamente em texto o que se está
+fazendo à medida que apresenta o código. Depois, o programa é
+compilado através de programas que extraem o código diretamente do
+texto didático. O código deve assim ser apresentado da forma que for
+mais adequada para a explicação no texto, não como for mais adequado
+para o computador.
+
+Seguindo esta técnica, este documento não é uma simples documentação
+do nosso código. Ele é por si só o código. A parte que será extraída e
+compilada posteriormente pode ser identificada como sendo o código
+presente em fundo cinza. Geralmente começamos cada trecho de código
+com um título que a nomeia. Por exemplo, imediatamente antes desta
+subseção nós apresentamos uma série de declarações. E como pode-se
+deduzir pelo título delas, a maioria será posteriormente posicionada
+dentro de um arquivo chamado \monoespaco{interface.h}.
+
+Podemos apresentar aqui a estrutura do arquivo
+\monoespaco{network.h}:
+
+@(src/network.h@>=
+#ifndef __WEAVER_NETWORK
+#define __WEAVER_NETWORK
+#ifdef __cplusplus
+extern "C" {
+#endif
+//@<Inclui Cabeçalhos Gerais (network.h)@>
+//@<Macros Gerais (network.h)@>
+//@<Estrutura de Dados (network.h)@>
+@<Declaração de Função (network.h)@>
+#ifdef __cplusplus
+}
+#endif
+#endif
+@
+
+O código acima mostra a burocracia padrão para definir um cabeçalho
+para nossa API em C. As duas primeiras linhas mais a última são macros
+que garantem que esse cabeçalho não será inserido mais de uma vez em
+uma mesma unidade de compilação. As linhas 3, 4, 5, assim como a
+penúltima, antepenúltima e a antes da antepenúltima tornam o cabeçalho
+adequado a ser inserido em código C++. Essas linhas apenas avisam que
+o que definirmos ali deve ser encarado como código C. Por isso o
+compilador está livre para fazer otimizações sabendo que não usaremos
+recursos da linguagem C++, como sobrecarga de operadores. Logo em
+seguida, inserimos um cabeçalho que nos permite declarar o tipo
+booleano. E tem também uma parte em vermelha. Note que uma delas é
+``Declaração de Função (interface.h)'', o mesmo nome apresentado no trecho de
+código mostrado quando descrevemos nossa API antes dessa
+subseção. Isso significa que aquele código visto antes será depois
+inserido ali. As outras partes em vermelho representam código que
+ainda iremos definir nas seções seguintes.
+
+Caso queira observar o que irá no arquivo \monoespaco{interface.c}
+associado a este cabeçaho, o código será este:
+
+@(src/network.c@>=
+#include "network.h"
+@<Cabeçalhos Locais (network.c)@>
+//@<Macros Locais (network.c)@>
+//@<Estrutura de Dados Locais (network.c)@>
+//@<Variáveis Locais (network.c)@>
+//@<Funções Auxiliares Locais (network.c)@>
+//@<Definição de Funções da API (network.c)@>
+@
+
+
+Todo o código que definiremos e explicaremos a seguir será posicionado
+nestes dois arquivos. Além deles, nenhum outro arquivo será criado.
+
+\subsecao{Inicialização do Módulo de Rede}
+
+A primeira parte do código que vamos introduzir são os cabeçalhos de
+uso da rede. No Windows, a biblioteca usada é o ``winsock2''. Essa
+biblioteca também deve ser ligada externamente ao programa, mas isso
+pode ser feito com uma diretiva ``pragma'' para o compilador:
+
+@<Cabeçalhos Locais (network.c)@>=
+#if defined(_WIN32)
+#include <winsock2.h>
+#pragma comment(lib,"wsock32.lib")
+#endif
+@
+
+Em sistemas baseados em Unix, só precisamos incluir os cabeçalhos
+adequados. A capacidade de se conectar já faz parte das bibliotecas
+padrão e não requer a ligação com bibliotecas externas:
+
+..
+
+
+
+Na maioria dos ambientes, não é necessário realizar nenhum tipo de
+inicialização especial antes de usar as funções para estabelecer
+conexões de rede. Mas há exceções, e por causa disso é importante
+existir uma função que cuida da inicialização do módulo de rede.
+
+Um dos ambientes que requer tal inicialização é o Windows.
+
+
+A base da nossa comunicação será feita usando oprotocolo UDP, na
+maioria dos ambientes de execução. O UDP, cujo nome significa ``User
+Datagram Protocol'' (ou Protocolo de Datagrama de Usuário) estabelece
+um formato sobre o qual duas máquians se comunicam diretamente sobre o
+protocolo IP. É um protocolo bastante simples, mas justamente por isso
+não oferece garantia alguma se cada um dos pacotes enviados por ele
+chegará ao destino, ou se eles chegarão na ordem esperada.
+
+O protocolo estabelece que toda mensagem trocada entre duas máquinas
+com um dado IP possua um cabeçalho com 4 elementos, cada um deles com
+2 bytes (ou 16 bits). Os elementos são: porta de origem, porta de
+destino, tamanho do datagrama em octetos (contando o cabeçalho mais os
+dados) e um ``checksum'' para testar a integridade.
