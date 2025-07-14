@@ -71,10 +71,11 @@ O módulo de rede do motor de jogos Weaver atua definindo e exportando
 uma série de funções que podem ser usadas externamente. Listaremos
 aqui as funções e suas assinaturas.
 
-Primeiro as funções de inicialização e finalização. A inicialização
-deve ser a primeira função a ser chamada, antes de qualquer outra
-função a ser mostrada abaixo. A finalização deve ser a última: após
-invocar ela não devemos mais chamar qualquer outra função de rede.
+Primeiro a função de inicialização e finalização. A inicialização deve
+ser a primeira função a ser chamada, antes de qualquer outra função a
+ser mostrada abaixo. Após invocar a finalização, não se deve chamar
+novamente nenhuma outra função definida aqui, exceto a função de
+inicialização.
 
 @<Declaração de Função (network.h)@>+=
 void _Winit_network(void);
@@ -147,7 +148,7 @@ associado a este cabeçaho, o código será este:
 //@<Estrutura de Dados Locais (network.c)@>
 //@<Variáveis Locais (network.c)@>
 //@<Funções Auxiliares Locais (network.c)@>
-//@<Definição de Funções da API (network.c)@>
+@<Definição de Funções da API (network.c)@>
 @
 
 
@@ -172,16 +173,48 @@ Em sistemas baseados em Unix, só precisamos incluir os cabeçalhos
 adequados. A capacidade de se conectar já faz parte das bibliotecas
 padrão e não requer a ligação com bibliotecas externas:
 
-..
+@<Cabeçalhos Locais (network.c)@>+=
+#if defined(__unix__)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#endif
+@
 
-
+Se estivermos executando WebAssembly em um navegador de Internet, a
+conexão de rede deve sr feita usando recursos do próprio navegador, e
+isso não requer cabeçalhos especiais.
 
 Na maioria dos ambientes, não é necessário realizar nenhum tipo de
 inicialização especial antes de usar as funções para estabelecer
-conexões de rede. Mas há exceções, e por causa disso é importante
-existir uma função que cuida da inicialização do módulo de rede.
+conexões de rede. Mas há exceções (o Windows, por exemplo), e por
+causa disso é importante existir uma função que cuida da inicialização
+do módulo de rede. Tal função faz a inicialização nos sistemas em que
+isso é necessário, e não faz nada nos demais:
 
-Um dos ambientes que requer tal inicialização é o Windows.
+@<Definição de Funções da API (network.c)@>=
+void _Winit_network(void){
+#if defined(_WIN32) // Windows:
+  WSADATA WsaData;
+  WSAStartup(MAKEWORD(2,2), &WsaData);
+#endif
+  return;
+}
+@
+
+Sistemas que requerem uma inicialização adicional para usar a rede
+podem precisar também de uma finalização, que é invocada abaixo:
+
+@<Definição de Funções da API (network.c)@>+=
+void _Wfinish_network(void){
+#if defined(_WIN32) // Windows:
+  WSACleanup();
+#endif
+  return;
+}
+@
+
+
 
 
 A base da nossa comunicação será feita usando oprotocolo UDP, na

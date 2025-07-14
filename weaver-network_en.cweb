@@ -65,7 +65,8 @@ and their signatures here.
 First, the initialization and shutdown functions. The initialization
 function must be the first one called, before any other function
 listed below. The shutdown function must be the last: after invoking
-it, no other network function should be called.
+it, no other network function should be called (except the
+initialization function to reinitialize this module).
 
 @<Function Declaration (network.h)@>=
 void _Winit_network(void);
@@ -94,7 +95,7 @@ be positioned in the file \monoespaco{interface.h}.
 We show below the structure of the file \monoespaco{interface.h}:
 
 
-@(src/interface.h@>=
+@(src/network.h@>=
 #ifndef __WEAVER_INTERFACE
 #define __WEAVER_INTERFACE
 #ifdef __cplusplus
@@ -130,15 +131,76 @@ following sections.
 If you want to understand how the \monoespaco{interface.c} file
 relates to this header, its structure is as follows:
 
-@(src/interface.c@>=
+@(src/network.c@>=
 #include "interface.h"
-//@<Local Headers (interface.c)@>
-//@<Local Macros (interface.c)@>
-//@<Local Data Structures (interface.c)@>
-//@<Local Variables (interface.c)@>
-//@<Auxiliary Local Functions (interface.c)@>
-//@<API Functions Definition (interface.c)@>
+@<Local Headers (network.c)@>
+//@<Local Macros (network.c)@>
+//@<Local Data Structures (network.c)@>
+//@<Local Variables (network.c)@>
+//@<Auxiliary Local Functions (network.c)@>
+@<API Functions Definition (network.c)@>
 @
 
 All the code presented in this document will be placed in one of these
 two files. No other files will be created.
+
+\subsecao{Newtwork Module Initialization}
+
+The first part of the code we will introduce consists of the
+network-related headers. On Windows, the library used is
+``winsock2''. This library must also be linked externally to the
+program, but this can be done using a ``pragma'' directive for the
+compiler:
+
+@<Local Headers (network.c)@>=
+#if defined(_WIN32)
+#include <winsock2.h>
+#pragma comment(lib,"wsock32.lib")
+#endif
+@
+
+On Unix-based systems, we only need to include the appropriate
+headers. The ability to establish connections is already part of the
+standard libraries and does not require linking with external
+libraries:
+
+@<Local Headers (network.c)@>+=
+#if defined(__unix__)
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <fcntl.h>
+#endif
+@
+
+If we are running WebAssembly in a web browser, network connections
+must be made using the browser's own capabilities, and this does not
+require any special headers.
+
+In most environments, no special initialization is required before
+using functions to establish network connections. However, there are
+exceptions (Windows, for example), and for this reason, it is
+important to have a function that handles the initialization of the
+network module. This function performs initialization on systems where
+it is needed, and does nothing on others:
+
+@<API Functions Definition (network.c)@>=
+void _Winit_network(void){
+#if defined(_WIN32) // Windows:
+  WSADATA WsaData;
+  WSAStartup(MAKEWORD(2,2), &WsaData);
+#endif
+  return;
+}
+@
+
+Systems that require additional initialization to use the network may
+also require a shutdown procedure, which is invoked below:
+
+@<API Functions Definition (network.c)@>+=
+void _Wfinish_network(void){
+#if defined(_WIN32) // Windows:
+  WSACleanup();
+#endif
+  return;
+}
+@

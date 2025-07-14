@@ -50,7 +50,14 @@ void assert(char *descricao, bool valor){
   }
 }
 
+void test_initialization(void){
+  _Winit_network();
+  _Wfinish_network();
+  assert("Module initialized and finished", true);
+}
+
 int main(int argc, char **argv){
+  test_initialization();
   imprime_resultado();
   return 0;
 }
