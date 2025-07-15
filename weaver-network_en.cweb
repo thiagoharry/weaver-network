@@ -101,9 +101,9 @@ We show below the structure of the file \monoespaco{interface.h}:
 #ifdef __cplusplus
 extern "C" {
 #endif
-//@<Include General Headers (network.h)@>
+@<Include General Headers (network.h)@>
 //@<General Macros (network.h)@>
-//@<Data Structures (network.h)@>
+@<Data Structures (network.h)@>
 @<Function Declaration (network.h)@>
 #ifdef __cplusplus
 }
@@ -144,7 +144,7 @@ relates to this header, its structure is as follows:
 All the code presented in this document will be placed in one of these
 two files. No other files will be created.
 
-\subsecao{Newtwork Module Initialization}
+\secao{2. Newtwork Module Initialization}
 
 The first part of the code we will introduce consists of the
 network-related headers. On Windows, the library used is
@@ -204,3 +204,104 @@ void _Wfinish_network(void){
   return;
 }
 @
+
+\secao{3. UDP Connections}
+
+In most runtime environments, our communication will be based on the
+UDP protocol. UDP, which stands for User Datagram Protocol, defines a
+format through which two machines can communicate directly over the IP
+protocol. It is a very simple protocol, and precisely because of that,
+it offers no guarantees that each of the packets sent will reach its
+destination, or that they will arrive in the expected order.
+
+The protocol specifies that every message exchanged between two
+machines with a given IP address includes a header with four fields,
+each 2 bytes (or 16 bits) in size. These fields are: source port,
+destination port, length of the datagram in octets (including both the
+header and the data), and a checksum for integrity verification. The
+rest of the packet contains the transmitted data, which can range from
+0 bytes to 65,527 bytes (the maximum size, due to the 16-bit length
+field). In practice, packets larger than 1,500 bytes are not
+recommended, as they are likely to be fragmented, which can impact
+performance and reduce the likelihood of successful delivery. It's
+important to keep in mind that the IPv4 or IPv6 protocol used to
+transmit the message will also consume part of this size limit (20–60
+bytes in the case of IPv4, and exactly 40 bytes in the case of IPv6).
+
+\alinhaverbatim
+|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
+           Source Port                            Destination Port
+
+|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
+          Datagram Size                             Checksum
+|_|_|_|_|_|_|_|_|.........................................|_|_|_|_|_|_|_|_|_|
+                                 Data
+\alinhanormal
+
+Communication between two participants usually involves establishing a
+connection between them: both sides open a ``socket'' (an abstraction
+provided by the operating system for network connections), with the
+program on the initiating side specifying the address and port of the
+destination program. This occurs in the following scenarios:
+
+1) Computers connect using a local area network (LAN). In this case,
+they use their local IP addresses and do not need to worry about
+Internet IPs.
+
+2) Clients communicate through a server that acts as an
+intermediary. In this case, each client only needs to know the
+server's public Internet IP address, and the server handles the
+message exchange between them.
+
+However, there is a more complex scenario:
+
+3) Clients are on different local networks and want to connect
+directly to each other.
+
+It is important to note that, in this case, each client must also
+discover its own public Internet address, as well as how the local
+router translates IP and port combinations destined for the client to
+avoid conflicts with other clients on the same network who might be
+using the same port for external connections. To handle this, the
+router uses a NAT table for translation. For example, an external
+connection to port 6282 may be translated—using the NAT table—as a
+connection to port 3855 on local machine A, while an external
+connection to port 6283 may be translated as a connection to port 3855
+on local machine B. Figuring out how to handle such translations can
+be done with the help of an external server, using protocols such as
+STUN.
+
+Therefore, to handle connections in scenario 3, the following are required:
+
+a) The address of an external STUN server.
+
+b) Each pair of machines attempting to connect must generate data
+describing their own connection and send it to their peer. Since they
+are not yet connected, this information must be exchanged through an
+external channel.
+
+Instead of dealing directly with the low-level concept of sockets, we
+will create an abstraction capable of encompassing both traditional
+sockets and WebRTC connections used in the more complex scenario 3. A
+connection must be created and then activated. Creating the connection
+initializes its data structure, and in scenario 3, this structure
+contains connection information that must be shared with the peer via
+external mechanisms. Activating the connection requires passing a
+string, which in scenarios 1 and 2 is simply an IP address and port,
+but in scenario 3 consists of a string with connection data generated
+by the peer and received through an external channel.
+
+This means the structure must contain the following variables:
+
+@<Include General Headers (network.h)@>=
+#include <stdbool.h> // Require 'bool'
+@
+
+@<Data Structures (network.h)@>=
+struct connection{
+  bool active; // Connection was activated?
+  char *local_data, *peer_data; // Local data and peer data connection
+};
+@
+
+\end

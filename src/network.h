@@ -7,8 +7,23 @@
 extern"C"{
 #endif
 #line 114 "weaver-network.cweb"
+/*8:*/
+#line 307 "weaver-network.cweb"
+
+#include <stdbool.h>  
+/*:8*/
+#line 114 "weaver-network.cweb"
 
 
+/*9:*/
+#line 311 "weaver-network.cweb"
+
+struct connection{
+bool active;
+char*local_data,*peer_data;
+};
+/*:9*/
+#line 116 "weaver-network.cweb"
 
 /*1:*/
 #line 80 "weaver-network.cweb"

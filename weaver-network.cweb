@@ -111,9 +111,9 @@ Podemos apresentar aqui a estrutura do arquivo
 #ifdef __cplusplus
 extern "C" {
 #endif
-//@<Inclui Cabeçalhos Gerais (network.h)@>
+@<Inclui Cabeçalhos Gerais (network.h)@>
 //@<Macros Gerais (network.h)@>
-//@<Estrutura de Dados (network.h)@>
+@<Estrutura de Dados (network.h)@>
 @<Declaração de Função (network.h)@>
 #ifdef __cplusplus
 }
@@ -144,7 +144,7 @@ associado a este cabeçaho, o código será este:
 @(src/network.c@>=
 #include "network.h"
 @<Cabeçalhos Locais (network.c)@>
-//@<Macros Locais (network.c)@>
+@<Macros Locais (network.c)@>
 //@<Estrutura de Dados Locais (network.c)@>
 //@<Variáveis Locais (network.c)@>
 //@<Funções Auxiliares Locais (network.c)@>
@@ -155,7 +155,7 @@ associado a este cabeçaho, o código será este:
 Todo o código que definiremos e explicaremos a seguir será posicionado
 nestes dois arquivos. Além deles, nenhum outro arquivo será criado.
 
-\subsecao{Inicialização do Módulo de Rede}
+\secao{2. Inicialização do Módulo de Rede}
 
 A primeira parte do código que vamos introduzir são os cabeçalhos de
 uso da rede. No Windows, a biblioteca usada é o ``winsock2''. Essa
@@ -214,8 +214,7 @@ void _Wfinish_network(void){
 }
 @
 
-
-
+\secao{3. Conexões UDP}
 
 A base da nossa comunicação será feita usando oprotocolo UDP, na
 maioria dos ambientes de execução. O UDP, cujo nome significa ``User
@@ -229,4 +228,119 @@ O protocolo estabelece que toda mensagem trocada entre duas máquinas
 com um dado IP possua um cabeçalho com 4 elementos, cada um deles com
 2 bytes (ou 16 bits). Os elementos são: porta de origem, porta de
 destino, tamanho do datagrama em octetos (contando o cabeçalho mais os
-dados) e um ``checksum'' para testar a integridade.
+dados) e um ``checksum'' para testar a integridade. O restante do
+pacote contém os dados transmitidos, que pode ser entre 0 bytes e
+65.527 bytes (o tamanho máximo, que faz o tamanho do pacote ser
+expresso em 16 bits). Na prática pacotes maiores que 1500 bytes não
+são recomendados, pois tais pacotes provavelmente serão fragmentados,
+gerando impacto de performance e diminuindo a chance de chegarem ao
+destino. É preciso ter em mente que o protocolo IPv4 ou IPv6 que é
+usado para transmitir a mensagem também irá gastar alguns bytes desse
+limite (20--60 bytes no caso de IPv4 e exatamente 40 bytes no caso de
+IPv6).
+
+\alinhaverbatim
+|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
+         Porta de Origem                           Porta de Destino
+
+|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
+         Tamanho do Datagrama                        Checksum
+|_|_|_|_|_|_|_|_|.........................................|_|_|_|_|_|_|_|_|_|
+                                 Dados
+\alinhanormal
+
+Comunicar-se entre dois participantes geralmente envolve criar uma
+conexão entre eles: ambos os lados abrem um ``socket'' (abstração do
+Sistema Operacional para a conexão) com o programa na origem indicando
+o endereço e porta do progrma de destino. Isso ocorre quando tempos os
+cenários abaixo:
+
+1) Computadores se conectam usando uma rede local (LAN). Neste caso,
+eles usam os seus endereços de IP na rede local, sem se preocupar com
+IPs da Internet.
+
+2) Os clientes se comunicam com um servidor sendo intermediário da
+comunicação entre eles. Neste caso, cada cliente precisa apenas saber
+do endereço IP de Internet do servidor, que se responsabiliza por
+realizar troca de emnsagens entre eles.
+
+Contudo, pode existir um cenário mais complicado:
+
+3) Os clientes estão em redes locais diferentes e querem se conectar
+diretamente entre si.
+
+É importante notar que neste caso cada cliente precisa também
+descobrir qual o seu próprio endereço de Internet, e como o roteador
+local traduz combinações de IP e porta destinados ao cliente de modo
+que não hajam conflitos com outros clientes da mesma rede que podem
+estar usando a mesma porta para conexões externas. Para isso o
+roteador usa uma tabela NAT para fazer traduções. Por exemplo, toda
+conexão externa na porta 6282 pode ser traduzida usando tal tabela
+como uma conexão na porta 3855 na máquina local A, enquanto uma
+conexão vinda de fora na porta 6283 pode ser traduzaida como conexão
+na porta 3855 na máquina local B. Descobrir como lidar com tais
+traduções é algo que pode ser feito usando a ajuda de um servidor
+externo, usando protocolos como o STUN.
+
+Sendo assim, para tratar a conexão no caso 3, é preciso:
+
+a) Endereço de um servidor STUN externo.
+
+b) Cada par de máquinas que está se conectando precisa gerar dados com
+informações sobre sua própria conexão e enviá-la para seu
+parceiro. Como eles ainda não estão conectados, tais informações são
+trocadas por meio de um canal externo.
+
+Ao invés então de lidar com o conceito mais baixo-nível de
+``sockets'', vamos criar uma abstração capaz de abarcar tanto eles
+como conexões WebRTC feitas no caso 3 mais complicado. Uma conexão
+precisará ser criada e ativada. Criar a conexão gera sua estrutura de
+dados, e caso estejamos no caso 3, dentro desta estrutura há as
+informações sobre a conexão que deve ser compartilhada com o par da
+conexão por mecanismos externos. Ativar a conexão requer passar uma
+string, que no caso 1 e 2 se resume à um IP e porta, mas no caso 3
+significa colocar uma string com informações da conexão gerada pelo
+parceiro e recebida por canal externo.
+
+Isso requer então possuir na estrutura as seguintes variáveis:
+
+@<Inclui Cabeçalhos Gerais (network.h)@>=
+#include <stdbool.h> // Requer 'bool'
+@
+
+@<Estrutura de Dados (network.h)@>=
+struct connection{
+  bool active; // A conexão foi ativada?
+  char *local_data, *peer_data; // Dados de conexão locais e do parceiro
+  @<struct connection: Atributos@>
+};
+@
+
+\subsecao{3.1. Criando a Conexão}
+
+No caso mais simples de criação de conexão, estamos rodando
+nativamente, não em um navegador Web, e queremos usar então
+``sockets''. Em nossa estrutura de conexão precisamos então armazenar
+um número de identificação para o socket que iremos criar:
+
+@<struct connection: Atributos@>=
+#if !defined(__EMSCRIPTEN__)
+int _socket_handle;
+#endif
+@
+
+A função que cria nova conexão deve então criar um socket UDP e
+associar uma porta a ele. O número da porta deve ser preferencialmente
+maior que 1024 para evitar portas reservadas pelo sistema e menores
+que 50000, para evitar espaços reservados para atribuição dinâ,ica de
+portas. A porta que iremos usar será aquela especificada pela macro
+\monoespaco{W\_PORT}. Caso esta macro não exista, vamos usar um valor
+padrão:
+
+@<Macros Locais (network.c)@>=
+#if !defined(W_PORT)
+#define W_PORT 29827 // Valor padrão escolhido aleatoriamente
+#endif
+@
+
+\fim
