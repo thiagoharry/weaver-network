@@ -66,13 +66,25 @@ First, the initialization and shutdown functions. The initialization
 function must be the first one called, before any other function
 listed below. The shutdown function must be the last: after invoking
 it, no other network function should be called (except the
-initialization function to reinitialize this module).
+initialization function to reinitialize this module). The
+initialization function must also receive pairs of functions for
+memory allocation and deallocation: one pair for temporary allocations
+and another for permanent allocations. Adding this support for custom
+memory managers is performed by all Weaver modules.
 
 @<Function Declaration (network.h)@>=
-void _Winit_network(void);
+void _Winit_network(void *(*permanent_alloc)(size_t),
+                    void (*permanent_free)(void *),
+                    void *(*temporary_alloc)(size_t),
+                    void (*temporary_free)(void *));
 void _Wfinish_network(void);
 @
 
+To create a new connection (but not activate it yet), we use:
+
+@<Function Declaration (network.h)@>+=
+struct connection *_Wcreate_connection(void);
+@
 
 \subsecao{1.2. Literate Programming}
 
@@ -90,17 +102,17 @@ be compiled can be identified by a gray background. We begin each
 piece of code by a title that names it. For example, immediately
 before this subsection we presented a series of function
 declarations. And how one could deduct by the title, most of them will
-be positioned in the file \monoespaco{interface.h}.
+be positioned in the file \monoespaco{network.h}.
 
-We show below the structure of the file \monoespaco{interface.h}:
-
+We show below the structure of the file \monoespaco{network.h}:
 
 @(src/network.h@>=
-#ifndef __WEAVER_INTERFACE
-#define __WEAVER_INTERFACE
+#ifndef __WEAVER_NETWORK
+#define __WEAVER_NETWORK
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include <stdlib.h> // Standard library
 @<Include General Headers (network.h)@>
 //@<General Macros (network.h)@>
 @<Data Structures (network.h)@>
@@ -122,21 +134,21 @@ used.
 
 Next, we include a header that allows us to use boolean variables. You
 may also notice some parts highlighted in red. One of them is labeled
-``Function Declaration (interface.h)'', the same title used for most of
+``Function Declaration (network.h)'', the same title used for most of
 the code declared earlier. This means that all previously defined code
 blocks with that title will be inserted at this point in the file. The
 other red-highlighted parts represent code that we will define in the
 following sections.
 
-If you want to understand how the \monoespaco{interface.c} file
+If you want to understand how the \monoespaco{network.c} file
 relates to this header, its structure is as follows:
 
 @(src/network.c@>=
-#include "interface.h"
+#include "network.h"
 @<Local Headers (network.c)@>
 //@<Local Macros (network.c)@>
 //@<Local Data Structures (network.c)@>
-//@<Local Variables (network.c)@>
+@<Local Variables (network.c)@>
 //@<Auxiliary Local Functions (network.c)@>
 @<API Functions Definition (network.c)@>
 @
@@ -181,10 +193,29 @@ using functions to establish network connections. However, there are
 exceptions (Windows, for example), and for this reason, it is
 important to have a function that handles the initialization of the
 network module. This function performs initialization on systems where
-it is needed, and does nothing on others:
+it is needed. On other systems, initialization is still important, but
+only for storing our allocation and deallocation functions.
+
+@<Local Headers (network.c)@>+=
+#include <stdlib.h> // Require: 'malloc', 'free'
+@
+
+@<Local Variables (network.c)@>=
+// By default, the allocation and deallocation functions are from stdlib.
+// But the initialization below may change this:
+static void *(*permanent_alloc)(size_t) = malloc;
+static void *(*temporary_alloc)(size_t) = malloc;
+static void (*permanent_free)(void *) = free;
+static void (*temporary_free)(void *) = free;
+@
 
 @<API Functions Definition (network.c)@>=
-void _Winit_network(void){
+void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
+                    void *(*t_alloc)(size_t), void (*t_free)(void *)){
+  permanent_alloc = p_alloc;
+  permanent_free = p_free;
+  temporary_alloc = t_alloc;
+  temporary_free = t_free;  
 #if defined(_WIN32) // Windows:
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
@@ -301,7 +332,45 @@ This means the structure must contain the following variables:
 struct connection{
   bool active; // Connection was activated?
   char *local_data, *peer_data; // Local data and peer data connection
+  @<struct connection: Attributes@>
 };
 @
+
+\subsecao{3.1. Creating the Connection}
+
+In the simplest case of creating a connection, we are running
+natively, not in a web browser, and we want to use sockets. In our
+connection structure, we therefore need to store an identifier for the
+socket we will create:
+
+@<struct connection: Attributes@>=
+#if !defined(__EMSCRIPTEN__)
+int _socket_handle;
+#endif
+@
+
+The function that creates a new connection must then create a UDP
+socket. In the simplest cases, this function is limited to:
+
+@<API Functions Definition (network.c)@>+=
+#if !defined(__EMSCRIPTEN__)
+struct connection *_Wcreate_connection(void){
+  struct connection *cnt;
+  cnt = permanent_alloc(sizeof(struct connection));
+  if(cnt != NULL){
+    cnt -> local_data = cnt -> peer_data = NULL;
+    cnt -> _socket_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    cnt -> active = false;
+    if(cnt -> _socket_handle == 0){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+  }
+  return cnt;
+}
+#endif
+@
+
 
 \end

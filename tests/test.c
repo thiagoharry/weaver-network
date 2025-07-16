@@ -51,9 +51,14 @@ void assert(char *descricao, bool valor){
 }
 
 void test_initialization(void){
-  _Winit_network();
+  struct connection *c;
+  _Winit_network(malloc, free, malloc, free);
   _Wfinish_network();
   assert("Module initialized and finished", true);
+  _Winit_network(malloc, free, malloc, free);
+  c = _Wcreate_connection();
+  assert("Creating new connection", c != NULL);
+  _Wfinish_network();
 }
 
 int main(int argc, char **argv){

@@ -74,12 +74,26 @@ aqui as funções e suas assinaturas.
 Primeiro a função de inicialização e finalização. A inicialização deve
 ser a primeira função a ser chamada, antes de qualquer outra função a
 ser mostrada abaixo. Após invocar a finalização, não se deve chamar
-novamente nenhuma outra função definida aqui, exceto a função de
-inicialização.
+novamente nenhuma outra função definida aqui (exceto a função de
+inicialização caso queira-se voltar a inicializar o módulo). A função
+de inicialização também deve receber pares de função que fazem
+alocação e desalocação de memória. Um par para alocações temporárias e
+outro para alocações permanentes. Adicionar este tipo de suporte a
+gerenciadores de memória personalizados é algo que todo módulo Weaver
+faz.
+
+@<Declaração de Função (network.h)@>=
+void _Winit_network(void *(*permanent_alloc)(size_t),
+                    void (*permanent_free)(void *),
+                    void *(*temporary_alloc)(size_t),
+                    void (*temporary_free)(void *));
+void _Wfinish_network(void);
+@
+
+Para gerar uma nova conexão (mas ainda não ativá-la), usamos:
 
 @<Declaração de Função (network.h)@>+=
-void _Winit_network(void);
-void _Wfinish_network(void);
+struct connection *_Wcreate_connection(void);
 @
 
 \subsecao{1.2. Programação Literária}
@@ -100,10 +114,9 @@ presente em fundo cinza. Geralmente começamos cada trecho de código
 com um título que a nomeia. Por exemplo, imediatamente antes desta
 subseção nós apresentamos uma série de declarações. E como pode-se
 deduzir pelo título delas, a maioria será posteriormente posicionada
-dentro de um arquivo chamado \monoespaco{interface.h}.
+dentro de um arquivo chamado \monoespaco{network.h}.
 
-Podemos apresentar aqui a estrutura do arquivo
-\monoespaco{network.h}:
+Podemos apresentar aqui a estrutura do arquivo \monoespaco{network.h}:
 
 @(src/network.h@>=
 #ifndef __WEAVER_NETWORK
@@ -111,6 +124,7 @@ Podemos apresentar aqui a estrutura do arquivo
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include <stdlib.h> // Biblioteca padrão
 @<Inclui Cabeçalhos Gerais (network.h)@>
 //@<Macros Gerais (network.h)@>
 @<Estrutura de Dados (network.h)@>
@@ -132,13 +146,13 @@ compilador está livre para fazer otimizações sabendo que não usaremos
 recursos da linguagem C++, como sobrecarga de operadores. Logo em
 seguida, inserimos um cabeçalho que nos permite declarar o tipo
 booleano. E tem também uma parte em vermelha. Note que uma delas é
-``Declaração de Função (interface.h)'', o mesmo nome apresentado no trecho de
+``Declaração de Função (network.h)'', o mesmo nome apresentado no trecho de
 código mostrado quando descrevemos nossa API antes dessa
 subseção. Isso significa que aquele código visto antes será depois
 inserido ali. As outras partes em vermelho representam código que
 ainda iremos definir nas seções seguintes.
 
-Caso queira observar o que irá no arquivo \monoespaco{interface.c}
+Caso queira observar o que irá no arquivo \monoespaco{network.c}
 associado a este cabeçaho, o código será este:
 
 @(src/network.c@>=
@@ -146,8 +160,8 @@ associado a este cabeçaho, o código será este:
 @<Cabeçalhos Locais (network.c)@>
 @<Macros Locais (network.c)@>
 //@<Estrutura de Dados Locais (network.c)@>
-//@<Variáveis Locais (network.c)@>
-//@<Funções Auxiliares Locais (network.c)@>
+@<Variáveis Locais (network.c)@>
+@<Funções Auxiliares Locais (network.c)@>
 @<Definição de Funções da API (network.c)@>
 @
 
@@ -190,14 +204,36 @@ inicialização especial antes de usar as funções para estabelecer
 conexões de rede. Mas há exceções (o Windows, por exemplo), e por
 causa disso é importante existir uma função que cuida da inicialização
 do módulo de rede. Tal função faz a inicialização nos sistemas em que
-isso é necessário, e não faz nada nos demais:
+isso é necessário. Nos demais sistemas, a inicialização ainda é
+importante, mas apenas para armazenarmos as nossas funções de alocação
+e desalocação.
+
+@<Cabeçalhos Locais (network.c)@>+=
+#include <stdlib.h> // Requer: 'malloc', 'free'
+@
+
+@<Variáveis Locais (network.c)@>=
+// Por padrão as funções de alocação serão as da biblioteca padrão.
+// Mas a inicialização pode modificar o valor padrão delas:
+static void *(*permanent_alloc)(size_t) = malloc;
+static void *(*temporary_alloc)(size_t) = malloc;
+static void (*permanent_free)(void *) = free;
+static void (*temporary_free)(void *) = free;
+@
 
 @<Definição de Funções da API (network.c)@>=
-void _Winit_network(void){
+// A função de inicialização:
+void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
+                    void *(*t_alloc)(size_t), void (*t_free)(void *)){
+  permanent_alloc = p_alloc;
+  permanent_free = p_free;
+  temporary_alloc = t_alloc;
+  temporary_free = t_free;  
 #if defined(_WIN32) // Windows:
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
 #endif
+  @<Weaver Network: Inicialização@>
   return;
 }
 @
@@ -329,8 +365,84 @@ int _socket_handle;
 #endif
 @
 
-A função que cria nova conexão deve então criar um socket UDP e
-associar uma porta a ele. O número da porta deve ser preferencialmente
+A função que cria nova conexão deve então criar um socket UDP. Nos
+casos mais simples, esta função se limita a:
+
+@<Definição de Funções da API (network.c)@>+=
+#if !defined(__EMSCRIPTEN__)
+struct connection *_Wcreate_connection(void){
+  struct connection *cnt;
+  cnt = permanent_alloc(sizeof(struct connection));
+  if(cnt != NULL){
+    cnt -> local_data = cnt -> peer_data = NULL;
+    cnt -> _socket_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    cnt -> active = false;
+    if(cnt -> _socket_handle == 0){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+  }
+  return cnt;
+}
+#endif
+@
+
+Caso estejamos usando WebAssembly, nosso objetivo é criar usando
+Javascript um objeto ``RTCPeerConnection''. Além disso, devemos ser
+capazes de referenciar tais objetos à partir do código C, e de
+associá-los a uma conexão. Para isso, vamos criar uma lista vazia de
+tais objetos durante a inicialização e vamos populá-la toda vez que
+uma nova conexão for criada em WebAssembly:
+
+@<Weaver Network: Inicialização@>=
+#if defined(__EMSCRIPTEN__)
+emscripten_run_script("_Wlist_of_connections = [];");
+#endif
+@
+
+Para criar uma conexão RTCPeerConnection, precisamos também indicar
+uma lista de servidores ICE. São servidores que auxiliam as máquinas a
+descobrir informações sobre seu próprio endereço na Internet por meio
+de protocolos como o STUN, ou que opcionalmente podem também
+intermediar a comunicação entre máquinas quando elas não puderem se
+conectar diretamente (usando protocolos como TURN). Queremos que um
+programa seja capaz de fornecer uma lista oficial, mas que tais
+valores possam ser facilmente modificados, até mesmo pelos usuários,
+se for necessário. Para isso, vamos garantir a existência de uma
+variável global Javascript que irá conter tal lista. Ela começa
+vazia. E esperamos que programas ou usuários a preencham colocando
+servidores de sua confiança:
+
+@<Weaver Network: Inicialização@>=
+#if defined(__EMSCRIPTEN__)
+emscripten_run_script(
+  "var iceServers;"
+  "iceServers = ((iceServers===undefined)?([]):(iceServers));");
+#endif
+@
+
+E definimos agora um código Javascript que cria uma nova
+RTCPeerConnection, inicializando com servidores ICE, obtém informações
+sobre a própria conexão (usando servidores indicados), adiciona a
+conexão na lista e retorna o seu índice dentro da lista de conexões:
+
+@<Funções Auxiliares Locais (network.c)@>
+#if defined(__EMSCRIPTEN__)
+EM_ASYNC_JS(int, new_rtc_connection, (), {
+  const peerConnection = new RTCPeerConnection({'iceServers': iceServers});
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  const index = _Wlist_of_connections.push(peerConnection);
+  return index-1;
+}
+#endif
+@
+
+
+
+
+O número da porta deve ser preferencialmente
 maior que 1024 para evitar portas reservadas pelo sistema e menores
 que 50000, para evitar espaços reservados para atribuição dinâ,ica de
 portas. A porta que iremos usar será aquela especificada pela macro

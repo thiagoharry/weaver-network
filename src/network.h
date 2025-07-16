@@ -1,42 +1,60 @@
-/*2:*/
-#line 108 "weaver-network.cweb"
+/*3:*/
+#line 109 "weaver-network_en.cweb"
 
 #ifndef __WEAVER_NETWORK
 #define __WEAVER_NETWORK
 #ifdef __cplusplus
 extern"C"{
 #endif
-#line 114 "weaver-network.cweb"
-/*8:*/
-#line 307 "weaver-network.cweb"
+#line 115 "weaver-network_en.cweb"
+#include <stdlib.h>  
+/*11:*/
+#line 327 "weaver-network_en.cweb"
 
 #include <stdbool.h>  
-/*:8*/
-#line 114 "weaver-network.cweb"
+/*:11*/
+#line 116 "weaver-network_en.cweb"
 
 
-/*9:*/
-#line 311 "weaver-network.cweb"
+/*12:*/
+#line 331 "weaver-network_en.cweb"
 
 struct connection{
 bool active;
 char*local_data,*peer_data;
+/*13:*/
+#line 346 "weaver-network_en.cweb"
+
+#if !defined(__EMSCRIPTEN__)
+int _socket_handle;
+#endif
+#line 350 "weaver-network_en.cweb"
+/*:13*/
+#line 335 "weaver-network_en.cweb"
+
 };
-/*:9*/
-#line 116 "weaver-network.cweb"
+/*:12*/
+#line 118 "weaver-network_en.cweb"
 
 /*1:*/
-#line 80 "weaver-network.cweb"
+#line 75 "weaver-network_en.cweb"
 
-void _Winit_network(void);
+void _Winit_network(void*(*permanent_alloc)(size_t),
+void(*permanent_free)(void*),
+void*(*temporary_alloc)(size_t),
+void(*temporary_free)(void*));
 void _Wfinish_network(void);
-/*:1*/
-#line 117 "weaver-network.cweb"
+/*:1*//*2:*/
+#line 85 "weaver-network_en.cweb"
+
+struct connection*_Wcreate_connection(void);
+/*:2*/
+#line 119 "weaver-network_en.cweb"
 
 #ifdef __cplusplus
 }
 #endif
-#line 121 "weaver-network.cweb"
+#line 123 "weaver-network_en.cweb"
 #endif
-#line 122 "weaver-network.cweb"
-/*:2*/
+#line 124 "weaver-network_en.cweb"
+/*:3*/
