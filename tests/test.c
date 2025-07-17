@@ -56,8 +56,16 @@ void test_initialization(void){
   _Wfinish_network();
   assert("Module initialized and finished", true);
   _Winit_network(malloc, free, malloc, free);
+
+#if defined(__EMSCRIPTEN__)
+  emscripten_run_script("iceServers=[{'urls': 'stun:stun.l.google.com:19302'}]");
+#endif
   c = _Wcreate_connection();
   assert("Creating new connection", c != NULL);
+#if defined(__EMSCRIPTEN__)
+  printf("Local data connection: %s\n",
+	 c -> local_data);
+#endif
   _Wfinish_network();
 }
 

@@ -157,6 +157,9 @@ associado a este cabeçaho, o código será este:
 
 @(src/network.c@>=
 #include "network.h"
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 @<Cabeçalhos Locais (network.c)@>
 @<Macros Locais (network.c)@>
 //@<Estrutura de Dados Locais (network.c)@>
@@ -360,9 +363,7 @@ nativamente, não em um navegador Web, e queremos usar então
 um número de identificação para o socket que iremos criar:
 
 @<struct connection: Atributos@>=
-#if !defined(__EMSCRIPTEN__)
-int _socket_handle;
-#endif
+int _conn_handle;
 @
 
 A função que cria nova conexão deve então criar um socket UDP. Nos
@@ -375,9 +376,9 @@ struct connection *_Wcreate_connection(void){
   cnt = permanent_alloc(sizeof(struct connection));
   if(cnt != NULL){
     cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _socket_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    cnt -> _conn_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     cnt -> active = false;
-    if(cnt -> _socket_handle == 0){
+    if(cnt -> _conn_handle == 0){
       if(permanent_free != NULL)
         permanent_free(cnt);
       return NULL;
@@ -427,7 +428,7 @@ RTCPeerConnection, inicializando com servidores ICE, obtém informações
 sobre a própria conexão (usando servidores indicados), adiciona a
 conexão na lista e retorna o seu índice dentro da lista de conexões:
 
-@<Funções Auxiliares Locais (network.c)@>
+@<Funções Auxiliares Locais (network.c)@>=
 #if defined(__EMSCRIPTEN__)
 EM_ASYNC_JS(int, new_rtc_connection, (), {
   const peerConnection = new RTCPeerConnection({'iceServers': iceServers});
@@ -435,12 +436,70 @@ EM_ASYNC_JS(int, new_rtc_connection, (), {
   await peerConnection.setLocalDescription(offer);
   const index = _Wlist_of_connections.push(peerConnection);
   return index-1;
-}
+});
 #endif
 @
 
+Podemos precisar extrair algumas informações sobre esta conexão RTC
+que está armazenada em Javascript. A primeira delas é o tamanho do
+dado local que descreve a conexão do usuário, dado o índice da conexão:
 
+@<Funções Auxiliares Locais (network.c)@>+=
+#if defined(__EMSCRIPTEN__)
+EM_JS(int, rtc_connection_data_size, (int index), {
+  return JSON.stringify(_Wlist_of_connections[index].localDescription).length;
+});
+#endif
+@
 
+Podemos extrair também a string com a descrição dos dados
+locais. Entretanto, tal string é alocada pela biblioteca padrão, e
+devemos desalocá-la imediatamente após copiá-la. Isso porque este
+módulo deve respeitar o uso de gerenciadores de memória customizados,
+evitando usar o alocador da biblioteca padrão:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+#if defined(__EMSCRIPTEN__)
+EM_JS(char *, get_rtc_connection_data, (int index), {
+  return stringToNewUTF8(JSON.stringify(_Wlist_of_connections[index].localDescription));
+});
+#endif
+@
+
+Com ajuda destas funções auxiliares que executam Javascript, podemos
+criar uma conexão também no caso em que queremos estabelecer conexão
+usando WebRTC:
+
+@<Cabeçalhos Locais (network.c)@>+=
+#include <string.h> // Requer 'memcpy'
+@
+
+@<Definição de Funções da API (network.c)@>+=
+#if defined(__EMSCRIPTEN__)
+struct connection *_Wcreate_connection(void){
+  struct connection *cnt;
+  cnt = permanent_alloc(sizeof(struct connection));
+  if(cnt != NULL){
+    char *temporary_buffer;
+    int size;
+    cnt -> local_data = cnt -> peer_data = NULL;
+    cnt -> active = false;
+    cnt -> _conn_handle = new_rtc_connection();
+    size = rtc_connection_data_size(cnt -> _conn_handle);
+    cnt -> local_data = (char *) permanent_alloc(size + 1);
+    if(cnt -> local_data == NULL){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+    temporary_buffer = get_rtc_connection_data(cnt -> _conn_handle);
+    memcpy(cnt -> local_data, temporary_buffer, size + 1);
+    free(temporary_buffer);
+  }
+  return cnt;
+}
+#endif
+@
 
 O número da porta deve ser preferencialmente
 maior que 1024 para evitar portas reservadas pelo sistema e menores

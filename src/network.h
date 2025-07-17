@@ -9,7 +9,7 @@ extern"C"{
 #line 115 "weaver-network_en.cweb"
 #include <stdlib.h>  
 /*11:*/
-#line 327 "weaver-network_en.cweb"
+#line 331 "weaver-network_en.cweb"
 
 #include <stdbool.h>  
 /*:11*/
@@ -17,20 +17,17 @@ extern"C"{
 
 
 /*12:*/
-#line 331 "weaver-network_en.cweb"
+#line 335 "weaver-network_en.cweb"
 
 struct connection{
 bool active;
 char*local_data,*peer_data;
 /*13:*/
-#line 346 "weaver-network_en.cweb"
-
-#if !defined(__EMSCRIPTEN__)
-int _socket_handle;
-#endif
 #line 350 "weaver-network_en.cweb"
+
+int _conn_handle;
 /*:13*/
-#line 335 "weaver-network_en.cweb"
+#line 339 "weaver-network_en.cweb"
 
 };
 /*:12*/

@@ -14,9 +14,9 @@ test_en:
 	./test_network
 test_web:
 	ctangle weaver-network.cweb
-	emcc $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -s ASYNCIFY=1 -Wall -O2 tests/test.c   -o docs/test_network.html
+	emcc $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -s ASYNCIFY=1 -sEXPORTED_RUNTIME_METHODS=stringToNewUTF8 -Wall -O2 tests/test.c src/network.c   -o docs/test_network.html
 test_web_en:
 	ctangle weaver-network_en.cweb
-	emcc $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -s ASYNCIFY=1 -Wall -O2 tests/test.c -o docs/test_network.html
+	emcc $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -s ASYNCIFY=1 -sEXPORTED_RUNTIME_METHODS=stringToNewUTF8 -Wall -O2 tests/test.c src/network.c -o docs/test_network.html
 clean:
 	rm -f *~ *.core *.scn *.dvi *.idx *.log 
