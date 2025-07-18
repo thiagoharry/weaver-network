@@ -352,7 +352,9 @@ int _conn_handle;
 @
 
 The function that creates a new connection must then create a UDP
-socket. In the simplest cases, this function is limited to:
+socket. In the simplest cases, this function just creates the data
+structure and populate the initial values. We cannot create the socket
+if we do not know if we will use IPv4 or IPv6.
 
 @<API Functions Definition (network.c)@>+=
 #if !defined(__EMSCRIPTEN__)
@@ -361,13 +363,8 @@ struct connection *_Wcreate_connection(void){
   cnt = permanent_alloc(sizeof(struct connection));
   if(cnt != NULL){
     cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _conn_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    cnt -> _conn_handle = 0;
     cnt -> active = false;
-    if(cnt -> _conn_handle == 0){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
   }
   return cnt;
 }

@@ -367,7 +367,9 @@ int _conn_handle;
 @
 
 A função que cria nova conexão deve então criar um socket UDP. Nos
-casos mais simples, esta função se limita a:
+casos mais simples, nós apenas alocamos a estrutura e deixamos seus
+valores inicializados como zero. Não podemos começar a criar o socket
+ainda, pois não sabemos se vamos usar IPv4 ou IPv6.
 
 @<Definição de Funções da API (network.c)@>+=
 #if !defined(__EMSCRIPTEN__)
@@ -376,13 +378,8 @@ struct connection *_Wcreate_connection(void){
   cnt = permanent_alloc(sizeof(struct connection));
   if(cnt != NULL){
     cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _conn_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    cnt -> _conn_handle = 0;
     cnt -> active = false;
-    if(cnt -> _conn_handle == 0){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
   }
   return cnt;
 }
@@ -501,10 +498,23 @@ struct connection *_Wcreate_connection(void){
 #endif
 @
 
-O número da porta deve ser preferencialmente
-maior que 1024 para evitar portas reservadas pelo sistema e menores
-que 50000, para evitar espaços reservados para atribuição dinâ,ica de
-portas. A porta que iremos usar será aquela especificada pela macro
+\subsecao{3.1. Ativando a Conexão}
+
+Para ativar uma conexão, devemos informar os dados do computador com o
+qual queremos nos conectar. Isso tipicamente significa um endereço
+IPv4 ou IPv6, opcionalmente seguido de uma porta. Ou,
+alternativamente, pode significar passar os dados de conexão Web RTC
+do destino. De qualquer forma, isso significa passar uma conexão e uma
+string com instruções de conexão.
+
+Vamos começar pelo caso mais simples: é uma conexão local, ou conexão
+a um servidor. Neste caso, assumimos que o IP é passado pelo
+usuário. Deve existir também uma porta para realizar a conexão.
+
+O número da porta deve ser preferencialmente maior que 1024 para
+evitar portas reservadas pelo sistema e menores que 50000, para evitar
+espaços reservados para atribuição dinâ,ica de portas. A porta que
+iremos usar será aquela especificada pela macro
 \monoespaco{W\_PORT}. Caso esta macro não exista, vamos usar um valor
 padrão:
 
@@ -513,5 +523,142 @@ padrão:
 #define W_PORT 29827 // Valor padrão escolhido aleatoriamente
 #endif
 @
+
+A função que efetivamente ativa a conexão, em seu caso amis simples,
+recebe um endereço IPv4 ou IPv6. A primeira cois a fazer é descobrir
+com qual dos dois estamos lidando:
+
+@<Definição de Funções da API (network.c)@>+=
+#if !defined(__EMSCRIPTEN__)
+bool _Wconnect(struct connection *cnt, char *destiny){
+  int ip_version = 0;
+  char *c = destiny;
+  // Ganhamos endereço IPv4 ou IPv6?
+  while(*c != '\0'){
+    if(*c == '.'){
+      ip_version = 4;
+      break;
+    }
+    if(*c == ':'){
+      ip_version = 6;
+      break;
+    }
+    c ++;
+  }
+  if(ip_version != 4 && ip_version != 6)
+    return false;
+  @<Criando Conexão@>
+  return true;
+}
+#endif
+@
+
+Em seguida, nós convertemos o endereço da forma de string para a forma
+binária. Para fazer isso, primeiro precisamos separar o endereço de
+destino entre o IP e a porta, caso esteja disponível. No caso do IPv4,
+usamos dois pontos (``:'') para separar o endereço IP da porta. Se não
+existir tal caractere, então a porta não é indicada no endereço:
+
+@<Criando Conexão@>=
+char *ip, *port = NULL, *address, *separator = NULL;
+address = (char *) temporary_alloc(strlen(destiny) + 1);
+if(address == NULL)
+  return false;
+if(ip_version == 4){
+  int i = 0;
+  while(destiny[i] != '\0'){
+    address[i] = destiny[i];
+    if(address[i] == ':')
+      separator = &(address[i]);
+    i ++;
+  }
+  address[i] = '\0';
+  ip = address;
+  if(separator)
+    port = separator + 1;
+}
+@
+
+No caso do IPv6, quando existe informação sobre a porta, o IP é
+delimitado por colchetes e usa-se dois pontos para separar ele do
+número da porta:
+
+@<Criando Conexão@>=
+if(ip_version == 6){
+  int i = 0;
+  if(destiny[0] == '['){
+    bool in_ip = true;
+    i ++;
+    ip = &(address[1]);
+    while(destiny[i] != '\0'){
+      address[i] = destiny[i];
+      if(address[i] == ']')
+        in_ip = false;
+      if(!in_ip && address[i] == ':')
+        separator = &(address[i]);
+      i++;
+    }
+    address[i] = '\0';
+  }
+  else{
+    ip = &(address[0]);
+    while(destiny[i] != '\0'){
+      address[i] = destiny[i];
+      i++;
+    }
+    address[i] = '\0';
+  }
+  if(separator)
+    port = separator + 1;
+
+}
+@
+
+Agora podemos assumir que temos ponteiros mostrando onde fica a parte
+do IP e da porta (se houver) no endereço de destino. Com isso, podemos
+começar a converter o formato de IP de string para formato
+binário. Para isso, no Linux, e sistemas baseados em Unix fazemos
+assim:
+
+@<Cabeçalhos Locais (network.c)@>+=
+#if defined(__unix__)
+#include <arpa/inet.h> // Requer 'inet_pton'
+#endif
+@
+
+@<Criando Conexão@>=
+#if defined(__unix__)
+if(ip_version == 4){
+  struct sockaddr_in sa;
+  // Obtém o endereço IPv4 em forma binária:
+  inet_pton(AF_INET, destiny, &(sa.sin_addr));
+}
+else if(ip_version == 6){
+  struct sockaddr_in6 sa;
+  // Obtém o endereço IPv6 em forma binária:
+  inet_pton(AF_INET6, destiny, &(sa.sin6_addr));
+}
+#endif
+@
+
+No Windows é bastante similar:
+
+@<Criando Conexão@>=
+#if defined(_WIN32)
+if(ip_version == 4){
+  struct sockaddr_in sa;
+  // Obtém o endereço IPv4 em forma binária:
+  WSAStringToAddressA(destiny, AF_INET, NULL, &sa, sizeof(struct sockaddr_in));
+
+}
+else if(ip_version == 6){
+  struct sockaddr_in6 sa;
+  // Obtém o endereço IPv6 em forma binária:
+  WSAStringToAddressA(destiny, AF_INET6, NULL, &sa, sizeof(struct sockaddr_in6));
+}
+#endif
+@
+
+
 
 \fim
