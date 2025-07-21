@@ -26,7 +26,11 @@ char*local_data,*peer_data;
 #line 365 "weaver-network.cweb"
 
 int _conn_handle;
-/*:13*/
+/*:13*//*17:*/
+#line 416 "weaver-network.cweb"
+
+int _connection_type;
+/*:17*/
 #line 354 "weaver-network.cweb"
 
 };

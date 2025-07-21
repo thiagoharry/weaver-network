@@ -61,11 +61,9 @@ void test_initialization(void){
   emscripten_run_script("iceServers=[{'urls': 'stun:stun.l.google.com:19302'}]");
 #endif
   c = _Wcreate_connection();
-  assert("Creating new connection", c != NULL);
-#if defined(__EMSCRIPTEN__)
+  assert("Creating new connection", c != NULL && c -> _conn_handle != 0);
   printf("Local data connection: %s\n",
 	 c -> local_data);
-#endif
   _Wfinish_network();
 }
 

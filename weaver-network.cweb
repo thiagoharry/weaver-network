@@ -366,10 +366,8 @@ um número de identificação para o socket que iremos criar:
 int _conn_handle;
 @
 
-A função que cria nova conexão deve então criar um socket UDP. Nos
-casos mais simples, nós apenas alocamos a estrutura e deixamos seus
-valores inicializados como zero. Não podemos começar a criar o socket
-ainda, pois não sabemos se vamos usar IPv4 ou IPv6.
+A função que cria nova conexão deve então criar um socket UDP para
+receber conexão de outro computador.
 
 @<Definição de Funções da API (network.c)@>+=
 #if !defined(__EMSCRIPTEN__)
@@ -378,13 +376,239 @@ struct connection *_Wcreate_connection(void){
   cnt = permanent_alloc(sizeof(struct connection));
   if(cnt != NULL){
     cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _conn_handle = 0;
+    cnt -> _conn_handle = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if(cnt -> _conn_handle == 0){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
     cnt -> active = false;
+    @<Criar Conexão@>
   }
   return cnt;
 }
 #endif
 @
+
+O socket precisa ser associado ao endereço da máquina e a uma porta
+específica. Com relação à porta, por padrão vamos usar o valor zero,
+que faz com que o sistema escolha automaticamente uma porta
+disponível. Entretanto, é possível fixar uma porta específica (caso
+queiramos programar um servidor que usa sempre a mesma porta)
+escolhendo um valor para a macro \monoespaco{W\_PORT}:
+
+@<Macros Locais (network.c)@>=
+#if !defined(W_PORT)
+#define W_PORT 0
+#endif
+@
+
+Em relação ao endereço, podemos usar ou IPv4 ou IPv6. A escolha feita
+será armazenada em atributo da conexão:
+
+@<Macros Locais (network.c)@>+=
+#define TYPE_UNKNOWN 0
+#define TYPE_IPV4    1
+#define TYPE_IPV6    2
+#define TYPE_WEBRTC  3
+@
+
+@<struct connection: Atributos@>=
+int _connection_type;
+@
+
+Associamos o socket criado ao endereço da máquina e a uma
+porta. Devemos também escolher se vamos usar IPv4 ou IPv6 ao criar o
+socket. A conexão IPv4 é criada com:
+
+@<IPv4: Criar Conexão@>=
+{
+  struct sockaddr_in address;
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = INADDR_ANY;
+  address.sin_port = htons((unsigned short) W_PORT);
+  if(bind(cnt -> _conn_handle, (struct sockaddr *) &address,
+          sizeof(struct sockaddr_in) ) < 0){ // Falhou:
+    fail = true;
+  }
+  else{
+    fail = false;
+    cnt -> _connection_type = TYPE_IPV4;
+  }
+}
+@
+
+A conexão IPv6 é criada de forma similar:
+
+@<IPv6: Criar Conexão@>=
+{
+  struct sockaddr_in6 address;
+  address.sin6_family = AF_INET6;
+  address.sin6_addr = in6addr_any;
+  address.sin6_port = htons((unsigned short) W_PORT);
+  if(bind(cnt -> _conn_handle, (struct sockaddr *) &address,
+          sizeof(struct sockaddr_in6) ) < 0){ // Falhou:
+    fail = true;
+  }
+  else{
+    fail = false;
+    cnt -> _connection_type = TYPE_IPV6;
+  }
+}
+@
+
+Por padrão, nós preferimos criar uma conexão IPv6. Mas se isso falhar,
+tentamos IPv4. Esta ordem pode ser invertida se a macro
+\monoespaco{W\_PREFER\_IPV4} estiver definida:
+
+
+@<Cabeçalhos Locais (network.c)@>+=
+#if defined(__unix__)
+#include <unistd.h> // Requer 'close'
+#endif
+@
+
+@<Criar Conexão@>+=
+{
+  bool fail = false;
+#if defined(W_PREFER_IPV4)
+  @<IPv4: Criar Conexão@>
+  if(fail){
+    @<IPv6: Criar Conexão@>
+  }
+#else
+  @<IPv6: Criar Conexão@>
+  if(fail){
+    @<IPv4: Criar Conexão@>
+  }
+#endif
+  printf("DEBUG: %d\n", cnt -> _connection_type);
+  if(fail){
+#if defined(__unix__)
+    close(cnt -> _conn_handle);
+#elif defined(_WIN32)
+    closesocket(cnt -> _conn_handle);
+#endif
+    if(permanent_free != NULL)
+      permanent_free(cnt);
+    return NULL;
+  }
+}
+@
+
+Em seguida, devemos fazer com que o socket não bloqueie durante a
+leitura. Caso tentemos ler seu conteúdo, mas não tenha mensagem
+nenhuma, um valor de retorno deve ser usado para indicar isso, ao
+invés de fazer a função entrar em um loop até que um valor surja. Para
+isso, em siustemas Unix, fazemos:
+
+@<Criar Conexão@>+=
+#if defined(__unix__)
+{
+  if(fcntl(cnt -> _conn_handle, F_SETFL, O_NONBLOCK, 1) == -1){
+    close(cnt -> _conn_handle);
+    if(permanent_free != NULL)
+      permanent_free(cnt);
+    return NULL;
+  }
+}
+#endif
+@
+
+No Windows, fazemos da seguinte forma:
+
+@<Criar Conexão@>+=
+#if defined(_WIN32)
+{
+  DWORD non_block = 1;
+  if(ioctlsocket(cnt -> _conn_handle, FIONBIO, &non_block) != 0){
+    socketclose(cnt -> _conn_handle);
+    if(permanent_free != NULL)
+      permanent_free(cnt);
+    return NULL;
+  }
+}
+#endif
+@
+
+Agora devemos obter qual foi o IP e porta associado ao socket que
+criamos para podermos armazenar na estrutura de nossa conexão. Isso é
+feito da seguinte forma no caso de IPv4:
+
+@<Cabeçalhos Locais (network.c)@>+=
+#if defined(__unix__)
+#include <arpa/inet.h> // Requer 'inet_ntop'
+#include <stdio.h> // Requer 'sprintf'
+#endif
+@
+
+@<Criar Conexão@>+=
+{
+  if(cnt -> _connection_type == TYPE_IPV4){
+    struct sockaddr_in address;
+    char port[8];
+    socklen_t size = sizeof(struct sockaddr_in);
+    if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
+                   &size) != 0){
+#if defined(__unix__)
+      close(cnt -> _conn_handle);
+#elif defined(_WIN32)
+      closesocket(cnt -> _conn_handle);
+#endif
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+    cnt -> local_data = (char *) permanent_alloc(INET_ADDRSTRLEN + 8);
+    if(cnt -> local_data == NULL){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+    inet_ntop(AF_INET, &(address.sin_addr), cnt -> local_data, INET_ADDRSTRLEN);
+    strncat(cnt -> local_data, ":", 2);
+    sprintf(port, "%d", ntohs(address.sin_port));
+    strncat(cnt -> local_data, port, 8);
+  }
+}
+@
+
+Finalmente, no caso de IPv6, usamos as seguintes funções e bibliotecas
+similares:
+
+@<Criar Conexão@>+=
+{
+  if(cnt -> _connection_type == TYPE_IPV6){
+    struct sockaddr_in6 address;
+    char port[8];
+    socklen_t size = sizeof(struct sockaddr_in);
+    if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
+                   &size) != 0){
+#if defined(__unix__)
+      close(cnt -> _conn_handle);
+#elif defined(_WIN32)
+      closesocket(cnt -> _conn_handle);
+#endif
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+    cnt -> local_data = (char *) permanent_alloc(INET6_ADDRSTRLEN + 8);
+    if(cnt -> local_data == NULL){
+      if(permanent_free != NULL)
+        permanent_free(cnt);
+      return NULL;
+    }
+    cnt -> local_data[0] = '[';
+    inet_ntop(AF_INET, &(address.sin6_addr), &(cnt -> local_data[1]),
+              INET6_ADDRSTRLEN);
+    strncat(cnt -> local_data, "]:", 3);
+    sprintf(port, "%d", ntohs(address.sin6_port));
+    strncat(cnt -> local_data, port, 8);
+  }
+}
+@
+
 
 Caso estejamos usando WebAssembly, nosso objetivo é criar usando
 Javascript um objeto ``RTCPeerConnection''. Além disso, devemos ser
@@ -511,18 +735,6 @@ Vamos começar pelo caso mais simples: é uma conexão local, ou conexão
 a um servidor. Neste caso, assumimos que o IP é passado pelo
 usuário. Deve existir também uma porta para realizar a conexão.
 
-O número da porta deve ser preferencialmente maior que 1024 para
-evitar portas reservadas pelo sistema e menores que 50000, para evitar
-espaços reservados para atribuição dinâ,ica de portas. A porta que
-iremos usar será aquela especificada pela macro
-\monoespaco{W\_PORT}. Caso esta macro não exista, vamos usar um valor
-padrão:
-
-@<Macros Locais (network.c)@>=
-#if !defined(W_PORT)
-#define W_PORT 29827 // Valor padrão escolhido aleatoriamente
-#endif
-@
 
 A função que efetivamente ativa a conexão, em seu caso amis simples,
 recebe um endereço IPv4 ou IPv6. A primeira cois a fazer é descobrir
@@ -620,11 +832,6 @@ começar a converter o formato de IP de string para formato
 binário. Para isso, no Linux, e sistemas baseados em Unix fazemos
 assim:
 
-@<Cabeçalhos Locais (network.c)@>+=
-#if defined(__unix__)
-#include <arpa/inet.h> // Requer 'inet_pton'
-#endif
-@
 
 @<Criando Conexão@>=
 #if defined(__unix__)
