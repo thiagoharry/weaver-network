@@ -35,15 +35,17 @@
 #endif
 #line 469 "weaver-network.cweb"
 /*:20*//*24:*/
-#line 538 "weaver-network.cweb"
+#line 539 "weaver-network.cweb"
 
 #if defined(__unix__)
-#include <arpa/inet.h>  
-#include <stdio.h>  
+#include <arpa/inet.h>    
+#include <stdio.h>       
+#include <sys/types.h>  
+#include <ifaddrs.h>   
 #endif
-#line 543 "weaver-network.cweb"
+#line 546 "weaver-network.cweb"
 /*:24*//*32:*/
-#line 694 "weaver-network.cweb"
+#line 752 "weaver-network.cweb"
 
 #include <string.h>  
 /*:32*/
@@ -80,7 +82,7 @@ static void(*temporary_free)(void*)= free;
 #line 166 "weaver-network.cweb"
 
 /*29:*/
-#line 652 "weaver-network.cweb"
+#line 710 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 EM_ASYNC_JS(int,new_rtc_connection,(),{
@@ -91,25 +93,25 @@ const index= _Wlist_of_connections.push(peerConnection);
 return index-1;
 });
 #endif
-#line 662 "weaver-network.cweb"
+#line 720 "weaver-network.cweb"
 /*:29*//*30:*/
-#line 668 "weaver-network.cweb"
+#line 726 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 EM_JS(int,rtc_connection_data_size,(int index),{
 return JSON.stringify(_Wlist_of_connections[index].localDescription).length;
 });
 #endif
-#line 674 "weaver-network.cweb"
+#line 732 "weaver-network.cweb"
 /*:30*//*31:*/
-#line 682 "weaver-network.cweb"
+#line 740 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 EM_JS(char*,get_rtc_connection_data,(int index),{
 return stringToNewUTF8(JSON.stringify(_Wlist_of_connections[index].localDescription));
 });
 #endif
-#line 688 "weaver-network.cweb"
+#line 746 "weaver-network.cweb"
 /*:31*/
 #line 167 "weaver-network.cweb"
 
@@ -129,21 +131,21 @@ WSAStartup(MAKEWORD(2,2),&WsaData);
 #endif
 #line 239 "weaver-network.cweb"
 /*27:*/
-#line 620 "weaver-network.cweb"
+#line 678 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 emscripten_run_script("_Wlist_of_connections = [];");
 #endif
-#line 624 "weaver-network.cweb"
+#line 682 "weaver-network.cweb"
 /*:27*//*28:*/
-#line 639 "weaver-network.cweb"
+#line 697 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 emscripten_run_script(
 "var iceServers;"
 "iceServers = ((iceServers===undefined)?([]):(iceServers));");
 #endif
-#line 645 "weaver-network.cweb"
+#line 703 "weaver-network.cweb"
 /*:28*/
 #line 239 "weaver-network.cweb"
 
@@ -269,22 +271,21 @@ cnt->_connection_type= TYPE_IPV4;
 }
 #endif
 #line 485 "weaver-network.cweb"
- printf("DEBUG: %d\n",cnt->_connection_type);
-if(fail){
+ if(fail){
 #if defined(__unix__)
 close(cnt->_conn_handle);
 #elif defined(_WIN32)
-#line 490 "weaver-network.cweb"
+#line 489 "weaver-network.cweb"
 closesocket(cnt->_conn_handle);
 #endif
-#line 492 "weaver-network.cweb"
+#line 491 "weaver-network.cweb"
  if(permanent_free!=NULL)
 permanent_free(cnt);
 return NULL;
 }
 }
 /*:21*//*22:*/
-#line 505 "weaver-network.cweb"
+#line 504 "weaver-network.cweb"
 
 #if defined(__unix__)
 {
@@ -296,9 +297,9 @@ return NULL;
 }
 }
 #endif
-#line 516 "weaver-network.cweb"
+#line 515 "weaver-network.cweb"
 /*:22*//*23:*/
-#line 520 "weaver-network.cweb"
+#line 519 "weaver-network.cweb"
 
 #if defined(_WIN32)
 {
@@ -311,74 +312,125 @@ return NULL;
 }
 }
 #endif
-#line 532 "weaver-network.cweb"
+#line 531 "weaver-network.cweb"
 /*:23*//*25:*/
-#line 545 "weaver-network.cweb"
+#line 548 "weaver-network.cweb"
 
-{
 if(cnt->_connection_type==TYPE_IPV4){
-struct sockaddr_in address;
-char port[8];
+struct ifaddrs*ifap,*ifa;
+struct sockaddr_in*sa,address;
+char*addr,*c;
+int counter= 0;
 socklen_t size= sizeof(struct sockaddr_in);
+char port[6];
+
+getifaddrs(&ifap);
+for(ifa= ifap;ifa;ifa= ifa->ifa_next)
+if(ifa->ifa_addr&&ifa->ifa_addr->sa_family==AF_INET)
+counter++;
+freeifaddrs(ifap);
+
+
+
+
+
+cnt->local_data= (char*)permanent_alloc(22*counter+1);
+if(cnt->local_data==NULL){
+close(cnt->_conn_handle);
+return NULL;
+}
+
 if(getsockname(cnt->_conn_handle,(struct sockaddr*)&address,
 &size)!=0){
-#if defined(__unix__)
 close(cnt->_conn_handle);
-#elif defined(_WIN32)
-#line 556 "weaver-network.cweb"
-closesocket(cnt->_conn_handle);
-#endif
-#line 558 "weaver-network.cweb"
- if(permanent_free!=NULL)
-permanent_free(cnt);
 return NULL;
 }
-cnt->local_data= (char*)permanent_alloc(INET_ADDRSTRLEN+8);
-if(cnt->local_data==NULL){
-if(permanent_free!=NULL)
-permanent_free(cnt);
-return NULL;
-}
-inet_ntop(AF_INET,&(address.sin_addr),cnt->local_data,INET_ADDRSTRLEN);
-strncat(cnt->local_data,":",2);
 sprintf(port,"%d",ntohs(address.sin_port));
-strncat(cnt->local_data,port,8);
+
+
+getifaddrs(&ifap);
+cnt->local_data[0]= '\0';
+c= cnt->local_data;
+for(ifa= ifap;ifa;ifa= ifa->ifa_next){
+if(ifa->ifa_addr&&ifa->ifa_addr->sa_family==AF_INET){
+sa= (struct sockaddr_in*)ifa->ifa_addr;
+addr= inet_ntoa(sa->sin_addr);
+strncat(c,addr,16);
+c+= strlen(addr);
+*c= ':';
+c++;
+*c= '\0';
+strncat(c,port,6);
+c+= strlen(port);
+*c= ';';
+c++;
+*c= '\0';
 }
+}
+c--;
+*c= '\0';
+freeifaddrs(ifap);
 }
 /*:25*//*26:*/
-#line 579 "weaver-network.cweb"
+#line 608 "weaver-network.cweb"
 
-{
 if(cnt->_connection_type==TYPE_IPV6){
-struct sockaddr_in6 address;
-char port[8];
-socklen_t size= sizeof(struct sockaddr_in);
+struct ifaddrs*ifap,*ifa;
+struct sockaddr_in6*sa,address;
+char*c;
+int counter= 0;
+socklen_t size= sizeof(struct sockaddr_in6);
+char port[6];
+
+getifaddrs(&ifap);
+for(ifa= ifap;ifa;ifa= ifa->ifa_next)
+if(ifa->ifa_addr&&ifa->ifa_addr->sa_family==AF_INET6)
+counter++;
+freeifaddrs(ifap);
+
+
+
+
+
+cnt->local_data= (char*)permanent_alloc(65*counter+1);
+if(cnt->local_data==NULL){
+close(cnt->_conn_handle);
+return NULL;
+}
+
 if(getsockname(cnt->_conn_handle,(struct sockaddr*)&address,
 &size)!=0){
-#if defined(__unix__)
 close(cnt->_conn_handle);
-#elif defined(_WIN32)
-#line 590 "weaver-network.cweb"
-closesocket(cnt->_conn_handle);
-#endif
-#line 592 "weaver-network.cweb"
- if(permanent_free!=NULL)
-permanent_free(cnt);
 return NULL;
 }
-cnt->local_data= (char*)permanent_alloc(INET6_ADDRSTRLEN+8);
-if(cnt->local_data==NULL){
-if(permanent_free!=NULL)
-permanent_free(cnt);
-return NULL;
-}
-cnt->local_data[0]= '[';
-inet_ntop(AF_INET,&(address.sin6_addr),&(cnt->local_data[1]),
-INET6_ADDRSTRLEN);
-strncat(cnt->local_data,"]:",3);
 sprintf(port,"%d",ntohs(address.sin6_port));
-strncat(cnt->local_data,port,8);
+
+
+getifaddrs(&ifap);
+cnt->local_data[0]= '\0';
+c= cnt->local_data;
+for(ifa= ifap;ifa;ifa= ifa->ifa_next){
+if(ifa->ifa_addr&&ifa->ifa_addr->sa_family==AF_INET6){
+sa= (struct sockaddr_in6*)ifa->ifa_addr;
+*c= '[';
+c++;
+inet_ntop(AF_INET6,&(sa->sin6_addr),c,46);
+while(*c!='\0')c++;
+*c= ']';
+c++;
+*c= ':';
+c++;
+*c= '\0';
+strncat(c,port,6);
+c+= strlen(port);
+*c= ';';
+c++;
+*c= '\0';
 }
+}
+c--;
+*c= '\0';
+freeifaddrs(ifap);
 }
 /*:26*/
 #line 386 "weaver-network.cweb"
@@ -389,7 +441,7 @@ return cnt;
 #endif
 #line 391 "weaver-network.cweb"
 /*:14*//*33:*/
-#line 698 "weaver-network.cweb"
+#line 756 "weaver-network.cweb"
 
 #if defined(__EMSCRIPTEN__)
 struct connection*_Wcreate_connection(void){
@@ -415,9 +467,9 @@ free(temporary_buffer);
 return cnt;
 }
 #endif
-#line 723 "weaver-network.cweb"
+#line 781 "weaver-network.cweb"
 /*:33*//*34:*/
-#line 743 "weaver-network.cweb"
+#line 801 "weaver-network.cweb"
 
 #if !defined(__EMSCRIPTEN__)
 bool _Wconnect(struct connection*cnt,char*destiny){
@@ -438,7 +490,7 @@ c++;
 if(ip_version!=4&&ip_version!=6)
 return false;
 /*35:*/
-#line 774 "weaver-network.cweb"
+#line 832 "weaver-network.cweb"
 
 char*ip,*port= NULL,*address,*separator= NULL;
 address= (char*)temporary_alloc(strlen(destiny)+1);
@@ -458,7 +510,7 @@ if(separator)
 port= separator+1;
 }
 /*:35*//*36:*/
-#line 798 "weaver-network.cweb"
+#line 856 "weaver-network.cweb"
 
 if(ip_version==6){
 int i= 0;
@@ -489,7 +541,7 @@ port= separator+1;
 
 }
 /*:36*//*37:*/
-#line 836 "weaver-network.cweb"
+#line 894 "weaver-network.cweb"
 
 #if defined(__unix__)
 if(ip_version==4){
@@ -503,9 +555,9 @@ struct sockaddr_in6 sa;
 inet_pton(AF_INET6,destiny,&(sa.sin6_addr));
 }
 #endif
-#line 849 "weaver-network.cweb"
+#line 907 "weaver-network.cweb"
 /*:37*//*38:*/
-#line 853 "weaver-network.cweb"
+#line 911 "weaver-network.cweb"
 
 #if defined(_WIN32)
 if(ip_version==4){
@@ -520,14 +572,14 @@ struct sockaddr_in6 sa;
 WSAStringToAddressA(destiny,AF_INET6,NULL,&sa,sizeof(struct sockaddr_in6));
 }
 #endif
-#line 867 "weaver-network.cweb"
+#line 925 "weaver-network.cweb"
 /*:38*/
-#line 762 "weaver-network.cweb"
+#line 820 "weaver-network.cweb"
 
 return true;
 }
 #endif
-#line 766 "weaver-network.cweb"
+#line 824 "weaver-network.cweb"
 /*:34*/
 #line 168 "weaver-network.cweb"
 

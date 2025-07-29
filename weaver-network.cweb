@@ -482,7 +482,6 @@ tentamos IPv4. Esta ordem pode ser invertida se a macro
     @<IPv4: Criar Conexão@>
   }
 #endif
-  printf("DEBUG: %d\n", cnt -> _connection_type);
   if(fail){
 #if defined(__unix__)
     close(cnt -> _conn_handle);
@@ -531,82 +530,172 @@ No Windows, fazemos da seguinte forma:
 #endif
 @
 
-Agora devemos obter qual foi o IP e porta associado ao socket que
-criamos para podermos armazenar na estrutura de nossa conexão. Isso é
-feito da seguinte forma no caso de IPv4:
+Agora devemos obter uma lista de IPs estão associados à nossa máquina
+e qual a porta que foi criada para o nosso socket. Devemos produzir
+uma string com endereços de IP e porta separados por ponto e vírgula
+para armazenar nos dados da conexão local. COmo fazer isso depende do
+sistema operacional. No Linux, se estivermos usando IPv4, fazemos:
 
 @<Cabeçalhos Locais (network.c)@>+=
 #if defined(__unix__)
-#include <arpa/inet.h> // Requer 'inet_ntop'
-#include <stdio.h> // Requer 'sprintf'
+#include <arpa/inet.h>   // Requer 'inet_ntoa'
+#include <stdio.h>      // Requer 'sprintf'
+#include <sys/types.h> // Requer 'getifaddrs'
+#include <ifaddrs.h>  // Requer 'getifaddrs'
 #endif
 @
 
 @<Criar Conexão@>+=
-{
-  if(cnt -> _connection_type == TYPE_IPV4){
-    struct sockaddr_in address;
-    char port[8];
-    socklen_t size = sizeof(struct sockaddr_in);
-    if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
-                   &size) != 0){
 #if defined(__unix__)
-      close(cnt -> _conn_handle);
-#elif defined(_WIN32)
-      closesocket(cnt -> _conn_handle);
-#endif
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
-    cnt -> local_data = (char *) permanent_alloc(INET_ADDRSTRLEN + 8);
-    if(cnt -> local_data == NULL){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
-    inet_ntop(AF_INET, &(address.sin_addr), cnt -> local_data, INET_ADDRSTRLEN);
-    strncat(cnt -> local_data, ":", 2);
-    sprintf(port, "%d", ntohs(address.sin_port));
-    strncat(cnt -> local_data, port, 8);
+if(cnt -> _connection_type == TYPE_IPV4){
+  struct ifaddrs *ifap, *ifa;
+  struct sockaddr_in *sa, address;
+  char *addr, *c;
+  int counter = 0;
+  socklen_t size = sizeof(struct sockaddr_in);
+  char port[6];
+  // Contando quantidade de interfaces de rede:
+  getifaddrs (&ifap);
+  for(ifa = ifap; ifa; ifa = ifa->ifa_next) 
+    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET)
+      counter ++;
+  freeifaddrs(ifap);
+  // Para cada interface, podemos ter 15 bytes máximo para a string de
+  // endereço (ex: '255.255.255.255'), 5 bytes para o tamanho da porta
+  // (ex: '65535'), um byte para o ':' separando IP e porta e 1 byte para
+  // o separador ';' ou para o fim de string '\0'. Logo, serão 22 bytes
+  // por interface para podermos armazenar qualquer endereço.
+  cnt -> local_data = (char *) permanent_alloc(22 * counter + 1);
+  if(cnt -> local_data == NULL){
+    close(cnt -> _conn_handle);
+    return NULL;
   }
+  // Agora obtemos o número da porta do nosso socket:
+  if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
+                 &size) != 0){
+    close(cnt -> _conn_handle);
+    return NULL;
+  }
+  sprintf(port, "%d", ntohs(address.sin_port));
+  // Iteramos novamente sobre as interfaces para montar a string com
+  // os dados locais da rede:
+  getifaddrs (&ifap);
+  cnt -> local_data[0] = '\0';
+  c = cnt -> local_data;
+  for(ifa = ifap; ifa; ifa = ifa->ifa_next) {
+    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET) {
+      sa = (struct sockaddr_in *) ifa->ifa_addr;
+      addr = inet_ntoa(sa->sin_addr);
+      strncat(c, addr, 16);
+      c += strlen(addr);
+      *c = ':';
+      c ++;
+      *c = '\0';
+      strncat(c, port, 6);
+      c += strlen(port);
+      *c = ';';
+      c ++;
+      *c = '\0';
+    }
+  }
+  c -- ;
+  *c = '\0';
+  freeifaddrs(ifap);
 }
+#endif
 @
 
-Finalmente, no caso de IPv6, usamos as seguintes funções e bibliotecas
-similares:
+No caso do Linux, mas usando IPv6, temos:
 
 @<Criar Conexão@>+=
-{
-  if(cnt -> _connection_type == TYPE_IPV6){
-    struct sockaddr_in6 address;
-    char port[8];
-    socklen_t size = sizeof(struct sockaddr_in);
-    if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
-                   &size) != 0){
 #if defined(__unix__)
-      close(cnt -> _conn_handle);
-#elif defined(_WIN32)
-      closesocket(cnt -> _conn_handle);
+if(cnt -> _connection_type == TYPE_IPV6){
+  struct ifaddrs *ifap, *ifa;
+  struct sockaddr_in6 *sa, address;
+  char *c;
+  int counter = 0;
+  socklen_t size = sizeof(struct sockaddr_in6);
+  char port[6];
+  // Contando quantidade de interfaces de rede:
+  getifaddrs (&ifap);
+  for(ifa = ifap; ifa; ifa = ifa->ifa_next) 
+    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET6)
+      counter ++;
+  freeifaddrs(ifap);
+  // Para cada interface, podemos ter 65 bytes máximo para a string de
+  // endereço em cada interface assumindo a possibilidade de um IPv6 completo,
+  // tunelamento com endereço IPv4, 2 colchetes para delimitar
+  // o endereço, dois pontos para separar endereço da porta e 5 bytes
+  // para a porta.
+  cnt -> local_data = (char *) permanent_alloc(65 * counter + 1);
+  if(cnt -> local_data == NULL){
+    close(cnt -> _conn_handle);
+    return NULL;
+  }
+  // Agora obtemos o número da porta do nosso socket:
+  if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
+                 &size) != 0){
+    close(cnt -> _conn_handle);
+    return NULL;
+  }
+  sprintf(port, "%d", ntohs(address.sin6_port));
+  // Iteramos novamente sobre as interfaces para montar a string com
+  // os dados locais da rede:
+  getifaddrs (&ifap);
+  cnt -> local_data[0] = '\0';
+  c = cnt -> local_data;
+  for(ifa = ifap; ifa; ifa = ifa->ifa_next) {
+    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET6) {
+      sa = (struct sockaddr_in6 *) ifa->ifa_addr;
+      *c = '[';
+      c ++;
+      inet_ntop(AF_INET6, &(sa->sin6_addr), c, 46);
+      while(*c != '\0') c++;
+      *c = ']';
+      c ++;
+      *c = ':';
+      c ++;
+      *c = '\0';
+      strncat(c, port, 6);
+      c += strlen(port);
+      *c = ';';
+      c ++;
+      *c = '\0';
+    }
+  }
+  c -- ;
+  *c = '\0';
+  freeifaddrs(ifap);
+}
 #endif
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
-    cnt -> local_data = (char *) permanent_alloc(INET6_ADDRSTRLEN + 8);
-    if(cnt -> local_data == NULL){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
-    cnt -> local_data[0] = '[';
-    inet_ntop(AF_INET, &(address.sin6_addr), &(cnt -> local_data[1]),
-              INET6_ADDRSTRLEN);
-    strncat(cnt -> local_data, "]:", 3);
-    sprintf(port, "%d", ntohs(address.sin6_port));
-    strncat(cnt -> local_data, port, 8);
+@
+
+No Windows, usando IPv4:
+
+@<Cabeçalhos Locais (network.c)@>+=
+#if defined(_WIN32)
+#include <iphlpapi.h> // Requer 'GetAdaptersAddresses' 
+#endif
+@
+
+
+@<Criar Conexão@>+=
+#if defined(_WIN32)
+if(cnt -> _connection_type == TYPE_IPV4){
+  int counter = 0;
+  PIP_ADAPTER_UNICAST_ADDRESS_LH *pAddress;
+  if(GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST |
+                                   GAA_FLAG_SKIP_MULTICAST |
+                                   GAA_FLAG_SKIP_DNS_SERVER |
+				   GAA_FLAG_SKIP_FRIENDLY_NAME, NULL,
+				   pAddresses, &ulSize) == 0){
+    // Contando número de IPs diferentes: 
+    for(pAddress = pAddresses->FirstUnicastAddress; pAddress != NULL;
+        pAddress = pAddress->Next)
+      counter ++;
   }
 }
+#endif
 @
 
 
