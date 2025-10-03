@@ -125,9 +125,9 @@ Podemos apresentar aqui a estrutura do arquivo \monoespaco{network.h}:
 extern "C" {
 #endif
 #include <stdlib.h> // Biblioteca padrão
-@<Inclui Cabeçalhos Gerais (network.h)@>
+//@<Inclui Cabeçalhos Gerais (network.h)@>
 //@<Macros Gerais (network.h)@>
-@<Estrutura de Dados (network.h)@>
+//@<Estrutura de Dados (network.h)@>
 @<Declaração de Função (network.h)@>
 #ifdef __cplusplus
 }
@@ -160,8 +160,9 @@ associado a este cabeçaho, o código será este:
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
+#include <stdbool.h> // Suporte a tipos booleanos
 @<Cabeçalhos Locais (network.c)@>
-@<Macros Locais (network.c)@>
+//@<Macros Locais (network.c)@>
 //@<Estrutura de Dados Locais (network.c)@>
 @<Variáveis Locais (network.c)@>
 @<Funções Auxiliares Locais (network.c)@>
@@ -236,7 +237,7 @@ void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
 #endif
-  @<Weaver Network: Inicialização@>
+  //@<Weaver Network: Inicialização@>
   return;
 }
 @
@@ -253,708 +254,120 @@ void _Wfinish_network(void){
 }
 @
 
-\secao{3. Conexões UDP}
+\secao{3. Primitivas de Rede}
 
-A base da nossa comunicação será feita usando oprotocolo UDP, na
-maioria dos ambientes de execução. O UDP, cujo nome significa ``User
-Datagram Protocol'' (ou Protocolo de Datagrama de Usuário) estabelece
-um formato sobre o qual duas máquians se comunicam diretamente sobre o
-protocolo IP. É um protocolo bastante simples, mas justamente por isso
-não oferece garantia alguma se cada um dos pacotes enviados por ele
-chegará ao destino, ou se eles chegarão na ordem esperada.
+\subsecao{3.1. Identificando um Endereço}
 
-O protocolo estabelece que toda mensagem trocada entre duas máquinas
-com um dado IP possua um cabeçalho com 4 elementos, cada um deles com
-2 bytes (ou 16 bits). Os elementos são: porta de origem, porta de
-destino, tamanho do datagrama em octetos (contando o cabeçalho mais os
-dados) e um ``checksum'' para testar a integridade. O restante do
-pacote contém os dados transmitidos, que pode ser entre 0 bytes e
-65.527 bytes (o tamanho máximo, que faz o tamanho do pacote ser
-expresso em 16 bits). Na prática pacotes maiores que 1500 bytes não
-são recomendados, pois tais pacotes provavelmente serão fragmentados,
-gerando impacto de performance e diminuindo a chance de chegarem ao
-destino. É preciso ter em mente que o protocolo IPv4 ou IPv6 que é
-usado para transmitir a mensagem também irá gastar alguns bytes desse
-limite (20--60 bytes no caso de IPv4 e exatamente 40 bytes no caso de
-IPv6).
+Antes de iniciarmos qualquer tipo de conexão, devemos ser capazes de
+saber a qual endereço devemos nos conectar. Endereços podem ser IPs de
+outras máquinas em IPv4 ou IPv6. Podem ser também um nome de domínio.
+
+As regras que adotaremos para identificar o tipo de endereço são
+baseadas no RFC 3986:
 
 \alinhaverbatim
-|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
-         Porta de Origem                           Porta de Destino
-
-|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
-         Tamanho do Datagrama                        Checksum
-|_|_|_|_|_|_|_|_|.........................................|_|_|_|_|_|_|_|_|_|
-                                 Dados
+<endereço>         -> <host>
+<host>             -> <Endereço IPv6>
+                      <Endereço IPv4> |
+	              <Nome de Registro>
+<Endereço IPv4>    -> <Octeto Decimal> "." <Octeto Decimal> "." <Octeto Decimal>
+                      "." <Octeto Decimal>
+<Endereço IPv6>    -> Regras elaboradas a estabelecer. Mas sempre contém ":".
+<Octeto Decimal>   -> Número entre 0 e 255 (inclusive). Sem zeros à esquerda.
+<Nome de Registro> -> Qualquer quantidade de letras, dígitos, caracteres e
+                      diversos símbolos, mas sem ":", "[" e "]"
 \alinhanormal
 
-Comunicar-se entre dois participantes geralmente envolve criar uma
-conexão entre eles: ambos os lados abrem um ``socket'' (abstração do
-Sistema Operacional para a conexão) com o programa na origem indicando
-o endereço e porta do progrma de destino. Isso ocorre quando tempos os
-cenários abaixo:
+Precisamos então de uma função que recebe um inteiro e retorna um
+inteiro representando um tipo de endereço. O retorno será -1 se o
+endereço não for válido, 1 se for um IPv4, 2 se for IPv6 e 3 se for um
+nome de domínio.
 
-1) Computadores se conectam usando uma rede local (LAN). Neste caso,
-eles usam os seus endereços de IP na rede local, sem se preocupar com
-IPs da Internet.
+A função funcionará armazenando uma variável
+\monoespaco{may\_be\_ipv4} que será inicializada como verdadeira, mas
+se tornará falsa assim que encontrarmos algo que indica que o que
+temos não pode ser um IPv4. Isso ocorre porque existe ambigüidade nas
+regras de como definir um nome de domínio e um IPv4, mas enquanto algo
+puder ser interpretado como IPv4, esta deve ser a interpretação
+preferencial.
 
-2) Os clientes se comunicam com um servidor sendo intermediário da
-comunicação entre eles. Neste caso, cada cliente precisa apenas saber
-do endereço IP de Internet do servidor, que se responsabiliza por
-realizar troca de emnsagens entre eles.
+Para identificarmos que tipo de endereço temos, iremos iterar sobre
+cada caractere do endereço. Tão logo encontramos um caractere de dois
+pontos (``:''), o endereço sópode ser IPv6. Interrompemos toda a
+computação e retornamos. Assim que encontramos uma letra minúscula ou
+maiúscula acima de ``f'' ou ``F'', podemos assumir com certeza
+absoluta que temos um nome de registro (domínio).
 
-Contudo, pode existir um cenário mais complicado:
+Se chegarmos até o fim do nosso loop e identificarmos que o endereço
+pode ser um IPv4, ele será um IPv4. Caso contrário, ele será um nome
+de registro de domínio (um IPv6 sempre tem um ``:'', então retornamos
+de nossa função antes do fim do loop se encontrarmos tal caractere).
 
-3) Os clientes estão em redes locais diferentes e querem se conectar
-diretamente entre si.
+Enquanto nosso endereço pode ser um IPv4, contamos os caracteres que
+recebemos até o próximo ponto e os concatenamos em um buffer. Se
+lermos mais de 3 caracteres, certamente não será um IPv4. Se o
+caractere não for numérico, não será IPv4. Se lermos 2 ou 3 caracteres
+que tenham um zero à esquerda, também não será IPv4. Se os caracteres
+não puderem ser convertidos para um número entre 0 e 255, também não
+será IPv4.
 
-É importante notar que neste caso cada cliente precisa também
-descobrir qual o seu próprio endereço de Internet, e como o roteador
-local traduz combinações de IP e porta destinados ao cliente de modo
-que não hajam conflitos com outros clientes da mesma rede que podem
-estar usando a mesma porta para conexões externas. Para isso o
-roteador usa uma tabela NAT para fazer traduções. Por exemplo, toda
-conexão externa na porta 6282 pode ser traduzida usando tal tabela
-como uma conexão na porta 3855 na máquina local A, enquanto uma
-conexão vinda de fora na porta 6283 pode ser traduzaida como conexão
-na porta 3855 na máquina local B. Descobrir como lidar com tais
-traduções é algo que pode ser feito usando a ajuda de um servidor
-externo, usando protocolos como o STUN.
+Eis agora o nosso código:
 
-Sendo assim, para tratar a conexão no caso 3, é preciso:
-
-a) Endereço de um servidor STUN externo.
-
-b) Cada par de máquinas que está se conectando precisa gerar dados com
-informações sobre sua própria conexão e enviá-la para seu
-parceiro. Como eles ainda não estão conectados, tais informações são
-trocadas por meio de um canal externo.
-
-Ao invés então de lidar com o conceito mais baixo-nível de
-``sockets'', vamos criar uma abstração capaz de abarcar tanto eles
-como conexões WebRTC feitas no caso 3 mais complicado. Uma conexão
-precisará ser criada e ativada. Criar a conexão gera sua estrutura de
-dados, e caso estejamos no caso 3, dentro desta estrutura há as
-informações sobre a conexão que deve ser compartilhada com o par da
-conexão por mecanismos externos. Ativar a conexão requer passar uma
-string, que no caso 1 e 2 se resume à um IP e porta, mas no caso 3
-significa colocar uma string com informações da conexão gerada pelo
-parceiro e recebida por canal externo.
-
-Isso requer então possuir na estrutura as seguintes variáveis:
-
-@<Inclui Cabeçalhos Gerais (network.h)@>=
-#include <stdbool.h> // Requer 'bool'
-@
-
-@<Estrutura de Dados (network.h)@>=
-struct connection{
-  bool active; // A conexão foi ativada?
-  char *local_data, *peer_data; // Dados de conexão locais e do parceiro
-  @<struct connection: Atributos@>
-};
-@
-
-\subsecao{3.1. Criando a Conexão}
-
-No caso mais simples de criação de conexão, estamos rodando
-nativamente, não em um navegador Web, e queremos usar então
-``sockets''. Em nossa estrutura de conexão precisamos então armazenar
-um número de identificação para o socket que iremos criar:
-
-@<struct connection: Atributos@>=
-int _conn_handle;
-@
-
-A função que cria nova conexão deve então criar um socket UDP para
-receber conexão de outro computador.
-
-@<Definição de Funções da API (network.c)@>+=
-#if !defined(__EMSCRIPTEN__)
-struct connection *_Wcreate_connection(void){
-  struct connection *cnt;
-  cnt = permanent_alloc(sizeof(struct connection));
-  if(cnt != NULL){
-    cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _conn_handle = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if(cnt -> _conn_handle == 0){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
-    }
-    cnt -> active = false;
-    @<Criar Conexão@>
-  }
-  return cnt;
-}
-#endif
-@
-
-O socket precisa ser associado ao endereço da máquina e a uma porta
-específica. Com relação à porta, por padrão vamos usar o valor zero,
-que faz com que o sistema escolha automaticamente uma porta
-disponível. Entretanto, é possível fixar uma porta específica (caso
-queiramos programar um servidor que usa sempre a mesma porta)
-escolhendo um valor para a macro \monoespaco{W\_PORT}:
-
-@<Macros Locais (network.c)@>=
-#if !defined(W_PORT)
-#define W_PORT 0
-#endif
-@
-
-Em relação ao endereço, podemos usar ou IPv4 ou IPv6. A escolha feita
-será armazenada em atributo da conexão:
-
-@<Macros Locais (network.c)@>+=
-#define TYPE_UNKNOWN 0
-#define TYPE_IPV4    1
-#define TYPE_IPV6    2
-#define TYPE_WEBRTC  3
-@
-
-@<struct connection: Atributos@>=
-int _connection_type;
-@
-
-Associamos o socket criado ao endereço da máquina e a uma
-porta. Devemos também escolher se vamos usar IPv4 ou IPv6 ao criar o
-socket. A conexão IPv4 é criada com:
-
-@<IPv4: Criar Conexão@>=
-{
-  struct sockaddr_in address;
-  address.sin_family = AF_INET;
-  address.sin_addr.s_addr = INADDR_ANY;
-  address.sin_port = htons((unsigned short) W_PORT);
-  if(bind(cnt -> _conn_handle, (struct sockaddr *) &address,
-          sizeof(struct sockaddr_in) ) < 0){ // Falhou:
-    fail = true;
-  }
-  else{
-    fail = false;
-    cnt -> _connection_type = TYPE_IPV4;
-  }
-}
-@
-
-A conexão IPv6 é criada de forma similar:
-
-@<IPv6: Criar Conexão@>=
-{
-  struct sockaddr_in6 address;
-  address.sin6_family = AF_INET6;
-  address.sin6_addr = in6addr_any;
-  address.sin6_port = htons((unsigned short) W_PORT);
-  if(bind(cnt -> _conn_handle, (struct sockaddr *) &address,
-          sizeof(struct sockaddr_in6) ) < 0){ // Falhou:
-    fail = true;
-  }
-  else{
-    fail = false;
-    cnt -> _connection_type = TYPE_IPV6;
-  }
-}
-@
-
-Por padrão, nós preferimos criar uma conexão IPv6. Mas se isso falhar,
-tentamos IPv4. Esta ordem pode ser invertida se a macro
-\monoespaco{W\_PREFER\_IPV4} estiver definida:
-
-
-@<Cabeçalhos Locais (network.c)@>+=
-#if defined(__unix__)
-#include <unistd.h> // Requer 'close'
-#endif
-@
-
-@<Criar Conexão@>+=
-{
-  bool fail = false;
-#if defined(W_PREFER_IPV4)
-  @<IPv4: Criar Conexão@>
-  if(fail){
-    @<IPv6: Criar Conexão@>
-  }
-#else
-  @<IPv6: Criar Conexão@>
-  if(fail){
-    @<IPv4: Criar Conexão@>
-  }
-#endif
-  if(fail){
-#if defined(__unix__)
-    close(cnt -> _conn_handle);
-#elif defined(_WIN32)
-    closesocket(cnt -> _conn_handle);
-#endif
-    if(permanent_free != NULL)
-      permanent_free(cnt);
-    return NULL;
-  }
-}
-@
-
-Em seguida, devemos fazer com que o socket não bloqueie durante a
-leitura. Caso tentemos ler seu conteúdo, mas não tenha mensagem
-nenhuma, um valor de retorno deve ser usado para indicar isso, ao
-invés de fazer a função entrar em um loop até que um valor surja. Para
-isso, em siustemas Unix, fazemos:
-
-@<Criar Conexão@>+=
-#if defined(__unix__)
-{
-  if(fcntl(cnt -> _conn_handle, F_SETFL, O_NONBLOCK, 1) == -1){
-    close(cnt -> _conn_handle);
-    if(permanent_free != NULL)
-      permanent_free(cnt);
-    return NULL;
-  }
-}
-#endif
-@
-
-No Windows, fazemos da seguinte forma:
-
-@<Criar Conexão@>+=
-#if defined(_WIN32)
-{
-  DWORD non_block = 1;
-  if(ioctlsocket(cnt -> _conn_handle, FIONBIO, &non_block) != 0){
-    socketclose(cnt -> _conn_handle);
-    if(permanent_free != NULL)
-      permanent_free(cnt);
-    return NULL;
-  }
-}
-#endif
-@
-
-Agora devemos obter uma lista de IPs estão associados à nossa máquina
-e qual a porta que foi criada para o nosso socket. Devemos produzir
-uma string com endereços de IP e porta separados por ponto e vírgula
-para armazenar nos dados da conexão local. COmo fazer isso depende do
-sistema operacional. No Linux, se estivermos usando IPv4, fazemos:
-
-@<Cabeçalhos Locais (network.c)@>+=
-#if defined(__unix__)
-#include <arpa/inet.h>   // Requer 'inet_ntoa'
-#include <stdio.h>      // Requer 'sprintf'
-#include <sys/types.h> // Requer 'getifaddrs'
-#include <ifaddrs.h>  // Requer 'getifaddrs'
-#endif
-@
-
-@<Criar Conexão@>+=
-#if defined(__unix__)
-if(cnt -> _connection_type == TYPE_IPV4){
-  struct ifaddrs *ifap, *ifa;
-  struct sockaddr_in *sa, address;
-  char *addr, *c;
-  int counter = 0;
-  socklen_t size = sizeof(struct sockaddr_in);
-  char port[6];
-  // Contando quantidade de interfaces de rede:
-  getifaddrs (&ifap);
-  for(ifa = ifap; ifa; ifa = ifa->ifa_next) 
-    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET)
-      counter ++;
-  freeifaddrs(ifap);
-  // Para cada interface, podemos ter 15 bytes máximo para a string de
-  // endereço (ex: '255.255.255.255'), 5 bytes para o tamanho da porta
-  // (ex: '65535'), um byte para o ':' separando IP e porta e 1 byte para
-  // o separador ';' ou para o fim de string '\0'. Logo, serão 22 bytes
-  // por interface para podermos armazenar qualquer endereço.
-  cnt -> local_data = (char *) permanent_alloc(22 * counter + 1);
-  if(cnt -> local_data == NULL){
-    close(cnt -> _conn_handle);
-    return NULL;
-  }
-  // Agora obtemos o número da porta do nosso socket:
-  if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
-                 &size) != 0){
-    close(cnt -> _conn_handle);
-    return NULL;
-  }
-  sprintf(port, "%d", ntohs(address.sin_port));
-  // Iteramos novamente sobre as interfaces para montar a string com
-  // os dados locais da rede:
-  getifaddrs (&ifap);
-  cnt -> local_data[0] = '\0';
-  c = cnt -> local_data;
-  for(ifa = ifap; ifa; ifa = ifa->ifa_next) {
-    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET) {
-      sa = (struct sockaddr_in *) ifa->ifa_addr;
-      addr = inet_ntoa(sa->sin_addr);
-      strncat(c, addr, 16);
-      c += strlen(addr);
-      *c = ':';
-      c ++;
-      *c = '\0';
-      strncat(c, port, 6);
-      c += strlen(port);
-      *c = ';';
-      c ++;
-      *c = '\0';
-    }
-  }
-  c -- ;
-  *c = '\0';
-  freeifaddrs(ifap);
-}
-#endif
-@
-
-No caso do Linux, mas usando IPv6, temos:
-
-@<Criar Conexão@>+=
-#if defined(__unix__)
-if(cnt -> _connection_type == TYPE_IPV6){
-  struct ifaddrs *ifap, *ifa;
-  struct sockaddr_in6 *sa, address;
-  char *c;
-  int counter = 0;
-  socklen_t size = sizeof(struct sockaddr_in6);
-  char port[6];
-  // Contando quantidade de interfaces de rede:
-  getifaddrs (&ifap);
-  for(ifa = ifap; ifa; ifa = ifa->ifa_next) 
-    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET6)
-      counter ++;
-  freeifaddrs(ifap);
-  // Para cada interface, podemos ter 65 bytes máximo para a string de
-  // endereço em cada interface assumindo a possibilidade de um IPv6 completo,
-  // tunelamento com endereço IPv4, 2 colchetes para delimitar
-  // o endereço, dois pontos para separar endereço da porta e 5 bytes
-  // para a porta.
-  cnt -> local_data = (char *) permanent_alloc(65 * counter + 1);
-  if(cnt -> local_data == NULL){
-    close(cnt -> _conn_handle);
-    return NULL;
-  }
-  // Agora obtemos o número da porta do nosso socket:
-  if(getsockname(cnt -> _conn_handle, (struct sockaddr *) &address,
-                 &size) != 0){
-    close(cnt -> _conn_handle);
-    return NULL;
-  }
-  sprintf(port, "%d", ntohs(address.sin6_port));
-  // Iteramos novamente sobre as interfaces para montar a string com
-  // os dados locais da rede:
-  getifaddrs (&ifap);
-  cnt -> local_data[0] = '\0';
-  c = cnt -> local_data;
-  for(ifa = ifap; ifa; ifa = ifa->ifa_next) {
-    if(ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET6) {
-      sa = (struct sockaddr_in6 *) ifa->ifa_addr;
-      *c = '[';
-      c ++;
-      inet_ntop(AF_INET6, &(sa->sin6_addr), c, 46);
-      while(*c != '\0') c++;
-      *c = ']';
-      c ++;
-      *c = ':';
-      c ++;
-      *c = '\0';
-      strncat(c, port, 6);
-      c += strlen(port);
-      *c = ';';
-      c ++;
-      *c = '\0';
-    }
-  }
-  c -- ;
-  *c = '\0';
-  freeifaddrs(ifap);
-}
-#endif
-@
-
-No Windows, usando IPv4:
-
-@<Cabeçalhos Locais (network.c)@>+=
-#if defined(_WIN32)
-#include <iphlpapi.h> // Requer 'GetAdaptersAddresses' 
-#endif
-@
-
-
-@<Criar Conexão@>+=
-#if defined(_WIN32)
-if(cnt -> _connection_type == TYPE_IPV4){
-  int counter = 0;
-  PIP_ADAPTER_UNICAST_ADDRESS_LH *pAddress;
-  if(GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST |
-                                   GAA_FLAG_SKIP_MULTICAST |
-                                   GAA_FLAG_SKIP_DNS_SERVER |
-				   GAA_FLAG_SKIP_FRIENDLY_NAME, NULL,
-				   pAddresses, &ulSize) == 0){
-    // Contando número de IPs diferentes: 
-    for(pAddress = pAddresses->FirstUnicastAddress; pAddress != NULL;
-        pAddress = pAddress->Next)
-      counter ++;
-  }
-}
-#endif
-@
-
-
-Caso estejamos usando WebAssembly, nosso objetivo é criar usando
-Javascript um objeto ``RTCPeerConnection''. Além disso, devemos ser
-capazes de referenciar tais objetos à partir do código C, e de
-associá-los a uma conexão. Para isso, vamos criar uma lista vazia de
-tais objetos durante a inicialização e vamos populá-la toda vez que
-uma nova conexão for criada em WebAssembly:
-
-@<Weaver Network: Inicialização@>=
-#if defined(__EMSCRIPTEN__)
-emscripten_run_script("_Wlist_of_connections = [];");
-#endif
-@
-
-Para criar uma conexão RTCPeerConnection, precisamos também indicar
-uma lista de servidores ICE. São servidores que auxiliam as máquinas a
-descobrir informações sobre seu próprio endereço na Internet por meio
-de protocolos como o STUN, ou que opcionalmente podem também
-intermediar a comunicação entre máquinas quando elas não puderem se
-conectar diretamente (usando protocolos como TURN). Queremos que um
-programa seja capaz de fornecer uma lista oficial, mas que tais
-valores possam ser facilmente modificados, até mesmo pelos usuários,
-se for necessário. Para isso, vamos garantir a existência de uma
-variável global Javascript que irá conter tal lista. Ela começa
-vazia. E esperamos que programas ou usuários a preencham colocando
-servidores de sua confiança:
-
-@<Weaver Network: Inicialização@>=
-#if defined(__EMSCRIPTEN__)
-emscripten_run_script(
-  "var iceServers;"
-  "iceServers = ((iceServers===undefined)?([]):(iceServers));");
-#endif
-@
-
-E definimos agora um código Javascript que cria uma nova
-RTCPeerConnection, inicializando com servidores ICE, obtém informações
-sobre a própria conexão (usando servidores indicados), adiciona a
-conexão na lista e retorna o seu índice dentro da lista de conexões:
 
 @<Funções Auxiliares Locais (network.c)@>=
-#if defined(__EMSCRIPTEN__)
-EM_ASYNC_JS(int, new_rtc_connection, (), {
-  const peerConnection = new RTCPeerConnection({'iceServers': iceServers});
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-  const index = _Wlist_of_connections.push(peerConnection);
-  return index-1;
-});
-#endif
-@
-
-Podemos precisar extrair algumas informações sobre esta conexão RTC
-que está armazenada em Javascript. A primeira delas é o tamanho do
-dado local que descreve a conexão do usuário, dado o índice da conexão:
-
-@<Funções Auxiliares Locais (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-EM_JS(int, rtc_connection_data_size, (int index), {
-  return JSON.stringify(_Wlist_of_connections[index].localDescription).length;
-});
-#endif
-@
-
-Podemos extrair também a string com a descrição dos dados
-locais. Entretanto, tal string é alocada pela biblioteca padrão, e
-devemos desalocá-la imediatamente após copiá-la. Isso porque este
-módulo deve respeitar o uso de gerenciadores de memória customizados,
-evitando usar o alocador da biblioteca padrão:
-
-@<Funções Auxiliares Locais (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-EM_JS(char *, get_rtc_connection_data, (int index), {
-  return stringToNewUTF8(JSON.stringify(_Wlist_of_connections[index].localDescription));
-});
-#endif
-@
-
-Com ajuda destas funções auxiliares que executam Javascript, podemos
-criar uma conexão também no caso em que queremos estabelecer conexão
-usando WebRTC:
-
-@<Cabeçalhos Locais (network.c)@>+=
-#include <string.h> // Requer 'memcpy'
-@
-
-@<Definição de Funções da API (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-struct connection *_Wcreate_connection(void){
-  struct connection *cnt;
-  cnt = permanent_alloc(sizeof(struct connection));
-  if(cnt != NULL){
-    char *temporary_buffer;
-    int size;
-    cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> active = false;
-    cnt -> _conn_handle = new_rtc_connection();
-    size = rtc_connection_data_size(cnt -> _conn_handle);
-    cnt -> local_data = (char *) permanent_alloc(size + 1);
-    if(cnt -> local_data == NULL){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
+#define ADDRESS_TYPE_INVALID -1
+#define ADDRESS_TYPE_IPV4     1
+#define ADDRESS_TYPE_IPV6     2
+#define ADDRESS_TYPE_DOMAIN   3
+int detect_address_type(char *address){
+  bool may_be_ipv4 = true;
+  char buffer[4], *c;
+  int number_of_chars_before_point = 0;
+  if(address[0] == '\0')
+    return ADDRESS_TYPE_INVALID;
+  for(c = address; *c != '\0'; c ++){
+    if(*c == ':')
+      return ADDRESS_TYPE_IPV6;
+    if((*c > 'f' && *c <= 'z') || (*c > 'F' && *c <= 'Z'))
+      return ADDRESS_TYPE_DOMAIN;
+    if(may_be_ipv4){
+      if(*c == '.'){
+        int num;
+        if(number_of_chars_before_point < 1 ||
+	   number_of_chars_before_point > 3){
+          may_be_ipv4 = false;
+          continue;
+        }
+	if(number_of_chars_before_point > 1 && buffer[0] == '0'){
+          may_be_ipv4 = false;
+          continue;
+        }
+	buffer[number_of_chars_before_point] = '\0';
+	num = atoi(buffer);
+	if(num > 255){
+          may_be_ipv4 = false;
+          continue;
+        }
+	number_of_chars_before_point = 0;
+	continue;
+      }
+      if(*c < '0' || *c > '9'){
+        may_be_ipv4 = false;
+	continue;
+      }
+      buffer[number_of_chars_before_point] = *c;
+      number_of_chars_before_point ++;
+      if(number_of_chars_before_point > 3){
+        may_be_ipv4 = false;
+	continue;
+      }
     }
-    temporary_buffer = get_rtc_connection_data(cnt -> _conn_handle);
-    memcpy(cnt -> local_data, temporary_buffer, size + 1);
-    free(temporary_buffer);
   }
-  return cnt;
-}
-#endif
-@
-
-\subsecao{3.1. Ativando a Conexão}
-
-Para ativar uma conexão, devemos informar os dados do computador com o
-qual queremos nos conectar. Isso tipicamente significa um endereço
-IPv4 ou IPv6, opcionalmente seguido de uma porta. Ou,
-alternativamente, pode significar passar os dados de conexão Web RTC
-do destino. De qualquer forma, isso significa passar uma conexão e uma
-string com instruções de conexão.
-
-Vamos começar pelo caso mais simples: é uma conexão local, ou conexão
-a um servidor. Neste caso, assumimos que o IP é passado pelo
-usuário. Deve existir também uma porta para realizar a conexão.
-
-
-A função que efetivamente ativa a conexão, em seu caso amis simples,
-recebe um endereço IPv4 ou IPv6. A primeira cois a fazer é descobrir
-com qual dos dois estamos lidando:
-
-@<Definição de Funções da API (network.c)@>+=
-#if !defined(__EMSCRIPTEN__)
-bool _Wconnect(struct connection *cnt, char *destiny){
-  int ip_version = 0;
-  char *c = destiny;
-  // Ganhamos endereço IPv4 ou IPv6?
-  while(*c != '\0'){
-    if(*c == '.'){
-      ip_version = 4;
-      break;
-    }
-    if(*c == ':'){
-      ip_version = 6;
-      break;
-    }
-    c ++;
-  }
-  if(ip_version != 4 && ip_version != 6)
-    return false;
-  @<Criando Conexão@>
-  return true;
-}
-#endif
-@
-
-Em seguida, nós convertemos o endereço da forma de string para a forma
-binária. Para fazer isso, primeiro precisamos separar o endereço de
-destino entre o IP e a porta, caso esteja disponível. No caso do IPv4,
-usamos dois pontos (``:'') para separar o endereço IP da porta. Se não
-existir tal caractere, então a porta não é indicada no endereço:
-
-@<Criando Conexão@>=
-char *ip, *port = NULL, *address, *separator = NULL;
-address = (char *) temporary_alloc(strlen(destiny) + 1);
-if(address == NULL)
-  return false;
-if(ip_version == 4){
-  int i = 0;
-  while(destiny[i] != '\0'){
-    address[i] = destiny[i];
-    if(address[i] == ':')
-      separator = &(address[i]);
-    i ++;
-  }
-  address[i] = '\0';
-  ip = address;
-  if(separator)
-    port = separator + 1;
+  if(may_be_ipv4)
+    return ADDRESS_TYPE_IPV4;
+  else
+    return ADDRESS_TYPE_DOMAIN;
 }
 @
-
-No caso do IPv6, quando existe informação sobre a porta, o IP é
-delimitado por colchetes e usa-se dois pontos para separar ele do
-número da porta:
-
-@<Criando Conexão@>=
-if(ip_version == 6){
-  int i = 0;
-  if(destiny[0] == '['){
-    bool in_ip = true;
-    i ++;
-    ip = &(address[1]);
-    while(destiny[i] != '\0'){
-      address[i] = destiny[i];
-      if(address[i] == ']')
-        in_ip = false;
-      if(!in_ip && address[i] == ':')
-        separator = &(address[i]);
-      i++;
-    }
-    address[i] = '\0';
-  }
-  else{
-    ip = &(address[0]);
-    while(destiny[i] != '\0'){
-      address[i] = destiny[i];
-      i++;
-    }
-    address[i] = '\0';
-  }
-  if(separator)
-    port = separator + 1;
-
-}
-@
-
-Agora podemos assumir que temos ponteiros mostrando onde fica a parte
-do IP e da porta (se houver) no endereço de destino. Com isso, podemos
-começar a converter o formato de IP de string para formato
-binário. Para isso, no Linux, e sistemas baseados em Unix fazemos
-assim:
-
-
-@<Criando Conexão@>=
-#if defined(__unix__)
-if(ip_version == 4){
-  struct sockaddr_in sa;
-  // Obtém o endereço IPv4 em forma binária:
-  inet_pton(AF_INET, destiny, &(sa.sin_addr));
-}
-else if(ip_version == 6){
-  struct sockaddr_in6 sa;
-  // Obtém o endereço IPv6 em forma binária:
-  inet_pton(AF_INET6, destiny, &(sa.sin6_addr));
-}
-#endif
-@
-
-No Windows é bastante similar:
-
-@<Criando Conexão@>=
-#if defined(_WIN32)
-if(ip_version == 4){
-  struct sockaddr_in sa;
-  // Obtém o endereço IPv4 em forma binária:
-  WSAStringToAddressA(destiny, AF_INET, NULL, &sa, sizeof(struct sockaddr_in));
-
-}
-else if(ip_version == 6){
-  struct sockaddr_in6 sa;
-  // Obtém o endereço IPv6 em forma binária:
-  WSAStringToAddressA(destiny, AF_INET6, NULL, &sa, sizeof(struct sockaddr_in6));
-}
-#endif
-@
-
-
 
 \fim

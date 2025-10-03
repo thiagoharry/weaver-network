@@ -6,11 +6,11 @@ doc_en:
 	dvipdf weaver-network_en.dvi
 test:
 	ctangle weaver-network.cweb
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c src/network.c  -o test_network
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c -o test_network
 	./test_network
 test_en:
 	ctangle weaver-network_en.cweb
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c src/network.c -o test_network 
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c -o test_network 
 	./test_network
 test_web:
 	ctangle weaver-network.cweb

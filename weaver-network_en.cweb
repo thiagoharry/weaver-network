@@ -113,9 +113,9 @@ We show below the structure of the file \monoespaco{network.h}:
 extern "C" {
 #endif
 #include <stdlib.h> // Standard library
-@<Include General Headers (network.h)@>
+//@<Include General Headers (network.h)@>
 //@<General Macros (network.h)@>
-@<Data Structures (network.h)@>
+//@<Data Structures (network.h)@>
 @<Function Declaration (network.h)@>
 #ifdef __cplusplus
 }
@@ -223,7 +223,7 @@ void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
 #endif
-  @<Weaver Network: Initialization@>
+  //@<Weaver Network: Initialization@>
   return;
 }
 @
@@ -240,248 +240,97 @@ void _Wfinish_network(void){
 }
 @
 
-\secao{3. UDP Connections}
+\secao{3. Network Primitives}
 
-In most runtime environments, our communication will be based on the
-UDP protocol. UDP, which stands for User Datagram Protocol, defines a
-format through which two machines can communicate directly over the IP
-protocol. It is a very simple protocol, and precisely because of that,
-it offers no guarantees that each of the packets sent will reach its
-destination, or that they will arrive in the expected order.
+\subsecao{3.1. Identifying an Address}
 
-The protocol specifies that every message exchanged between two
-machines with a given IP address includes a header with four fields,
-each 2 bytes (or 16 bits) in size. These fields are: source port,
-destination port, length of the datagram in octets (including both the
-header and the data), and a checksum for integrity verification. The
-rest of the packet contains the transmitted data, which can range from
-0 bytes to 65,527 bytes (the maximum size, due to the 16-bit length
-field). In practice, packets larger than 1,500 bytes are not
-recommended, as they are likely to be fragmented, which can impact
-performance and reduce the likelihood of successful delivery. It's
-important to keep in mind that the IPv4 or IPv6 protocol used to
-transmit the message will also consume part of this size limit (20–60
-bytes in the case of IPv4, and exactly 40 bytes in the case of IPv6).
+Before starting any type of connection, we must be able to know which
+address we should connect to. Addresses can be the IPs of other
+machines in IPv4 or IPv6. They can also be a domain name.
+
+The rules we will adopt to identify the type of address are based on
+RFC 3986:
 
 \alinhaverbatim
-|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
-           Source Port                            Destination Port
-
-|_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|     |_|_|_|_|_|_|_|_|.|_|_|_|_|_|_|_|_|
-          Datagram Size                             Checksum
-|_|_|_|_|_|_|_|_|.........................................|_|_|_|_|_|_|_|_|_|
-                                 Data
+<address>         -> <host>
+<host>             -> <IPv6 address>
+                      <IPv4 address> |
+	              <Register Name>
+<IPv4 address>    -> <Decimal Octet> "." <Decimal Octet> "." <Decimal Octet>
+                      "." <Decimal Octet>
+<IPv6 address>    -> Complex rules to be defined. But they alway contain ":".
+<Decimal Octet>   -> Number between 0 and 255 (inclusive). With no leading zeroes.
+<Register Nmae> -> Any amount of letters, digits and several symols,
+                   but without ":", "[" and "]"
 \alinhanormal
 
-Communication between two participants usually involves establishing a
-connection between them: both sides open a ``socket'' (an abstraction
-provided by the operating system for network connections), with the
-program on the initiating side specifying the address and port of the
-destination program. This occurs in the following scenarios:
+We therefore need a function that takes an integer and returns an integer representing an address type. The return value will be -1 if the address is not valid, 1 if it is IPv4, 2 if it is IPv6, and 3 if it is a domain name.
 
-1) Computers connect using a local area network (LAN). In this case,
-they use their local IP addresses and do not need to worry about
-Internet IPs.
+The function will work by storing a variable
+\monoespaco{may_be_ipv4} which will be initialized as true, but will become false as soon as we find something that indicates what we have cannot be an IPv4. This is because there is ambiguity in the rules for defining a domain name and an IPv4, but as long as something can be interpreted as IPv4, this must be the preferred interpretation.
 
-2) Clients communicate through a server that acts as an
-intermediary. In this case, each client only needs to know the
-server's public Internet IP address, and the server handles the
-message exchange between them.
+To identify what type of address we have, we will iterate over each character of the address. As soon as we find a colon (“:”), the address can only be IPv6. We interrupt the entire computation and return. As soon as we find a lowercase or uppercase letter above “f” or “F”, we can assume with absolute certainty that we have a hostname (domain name).
 
-However, there is a more complex scenario:
+If we reach the end of our loop and identify that the address may be an IPv4, then it will be an IPv4. Otherwise, it will be a domain name (an IPv6 always has a “:”, so we return from our function before the end of the loop if we find such a character).
 
-3) Clients are on different local networks and want to connect
-directly to each other.
+While our address may still be an IPv4, we count the characters we receive up to the next dot and concatenate them into a buffer. If we read more than 3 characters, it certainly won’t be an IPv4. If the character is not numeric, it won’t be IPv4. If we read 2 or 3 characters that have a leading zero, it also won’t be IPv4. If the characters cannot be converted into a number between 0 and 255, it won’t be IPv4 either.
 
-It is important to note that, in this case, each client must also
-discover its own public Internet address, as well as how the local
-router translates IP and port combinations destined for the client to
-avoid conflicts with other clients on the same network who might be
-using the same port for external connections. To handle this, the
-router uses a NAT table for translation. For example, an external
-connection to port 6282 may be translated—using the NAT table—as a
-connection to port 3855 on local machine A, while an external
-connection to port 6283 may be translated as a connection to port 3855
-on local machine B. Figuring out how to handle such translations can
-be done with the help of an external server, using protocols such as
-STUN.
-
-Therefore, to handle connections in scenario 3, the following are required:
-
-a) The address of an external STUN server.
-
-b) Each pair of machines attempting to connect must generate data
-describing their own connection and send it to their peer. Since they
-are not yet connected, this information must be exchanged through an
-external channel.
-
-Instead of dealing directly with the low-level concept of sockets, we
-will create an abstraction capable of encompassing both traditional
-sockets and WebRTC connections used in the more complex scenario 3. A
-connection must be created and then activated. Creating the connection
-initializes its data structure, and in scenario 3, this structure
-contains connection information that must be shared with the peer via
-external mechanisms. Activating the connection requires passing a
-string, which in scenarios 1 and 2 is simply an IP address and port,
-but in scenario 3 consists of a string with connection data generated
-by the peer and received through an external channel.
-
-This means the structure must contain the following variables:
-
-@<Include General Headers (network.h)@>=
-#include <stdbool.h> // Require 'bool'
-@
-
-@<Data Structures (network.h)@>=
-struct connection{
-  bool active; // Connection was activated?
-  char *local_data, *peer_data; // Local data and peer data connection
-  @<struct connection: Attributes@>
-};
-@
-
-\subsecao{3.1. Creating the Connection}
-
-In the simplest case of creating a connection, we are running
-natively, not in a web browser, and we want to use sockets. In our
-connection structure, we therefore need to store an identifier for the
-socket we will create:
-
-@<struct connection: Attributes@>=
-int _conn_handle;
-@
-
-The function that creates a new connection must then create a UDP
-socket. In the simplest cases, this function just creates the data
-structure and populate the initial values. We cannot create the socket
-if we do not know if we will use IPv4 or IPv6.
-
-@<API Functions Definition (network.c)@>+=
-#if !defined(__EMSCRIPTEN__)
-struct connection *_Wcreate_connection(void){
-  struct connection *cnt;
-  cnt = permanent_alloc(sizeof(struct connection));
-  if(cnt != NULL){
-    cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> _conn_handle = 0;
-    cnt -> active = false;
-  }
-  return cnt;
-}
-#endif
-@
-
-If we are using WebAssembly, our goal is to create an
-``RTCPeerConnection'' object using JavaScript. Furthermore, we must be
-able to reference these objects from the C code and associate them
-with a connection. To achieve this, we will create an empty list of
-such objects during initialization and populate it whenever a new
-connection is created in WebAssembly:
-
-@<Weaver Network: Initialization@>=
-#if defined(__EMSCRIPTEN__)
-emscripten_run_script("_Wlist_of_connections = [];");
-#endif
-@
-
-To create an ``RTCPeerConnection'', we also need to specify a list of ICE
-servers. These are servers that help machines discover information
-about their own Internet address through protocols such as STUN, or
-optionally relay communication between machines when direct connection
-is not possible (using protocols like TURN). We want a program to be
-able to provide an official list, but also allow these values to be
-easily modified, even by users, if necessary. To achieve this, we will
-ensure the existence of a global JavaScript variable that will contain
-this list. It starts empty, and we expect programs or users to
-populate it with servers they trust:
-
-@<Weaver Network: Initialization@>=
-#if defined(__EMSCRIPTEN__)
-emscripten_run_script(
-  "var iceServers;"
-  "iceServers = ((iceServers===undefined)?([]):(iceServers));");
-#endif
-@
-
-And now we define a JavaScript code snippet that creates a new
-RTCPeerConnection, initializes it with ICE servers, retrieves
-information about the connection itself (using the specified servers),
-adds the connection to the list, and returns its index within the
-connection list:
+Here is our code:
 
 @<Auxiliary Local Functions (network.c)@>=
-#if defined(__EMSCRIPTEN__)
-EM_ASYNC_JS(int, new_rtc_connection, (), {
-  const peerConnection = new RTCPeerConnection({'iceServers': iceServers});
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-  const index = _Wlist_of_connections.push(peerConnection);
-  return index-1;
-});
-#endif
-@
-
-We may need to extract some information about this RTC connection
-stored in JavaScript. The first piece of information is the size of
-the local data that describes the user's connection, given the
-connection index:
-
-@<Auxiliary Local Functions (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-EM_JS(int, rtc_connection_data_size, (int index), {
-  return JSON.stringify(_Wlist_of_connections[index].localDescription).length;
-});
-#endif
-@
-
-We can also extract the string containing the description of the local
-data. However, this string is allocated by the standard library and
-must be deallocated immediately after copying it. This is because this
-module must adhere to the use of custom memory managers, avoiding the
-use of the standard library allocator:
-
-@<Auxiliary Local Functions (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-EM_JS(char *, get_rtc_connection_data, (int index), {
-  return stringToNewUTF8(JSON.stringify(_Wlist_of_connections[index].localDescription));
-});
-#endif
-@
-
-With the help of these helper functions that execute JavaScript, we
-can also create a connection in the case where we want to establish a
-connection using WebRTC:
-
-@<Local Headers (network.c)@>+=
-#include <string.h> // Requer 'memcpy'
-@
-
-@<API Functions Definition (network.c)@>+=
-#if defined(__EMSCRIPTEN__)
-struct connection *_Wcreate_connection(void){
-  struct connection *cnt;
-  cnt = permanent_alloc(sizeof(struct connection));
-  if(cnt != NULL){
-    char *temporary_buffer;
-    int size;
-    cnt -> local_data = cnt -> peer_data = NULL;
-    cnt -> active = false;
-    cnt -> _conn_handle = new_rtc_connection();
-    size = rtc_connection_data_size(cnt -> _conn_handle);
-    cnt -> local_data = (char *) permanent_alloc(size + 1);
-    if(cnt -> local_data == NULL){
-      if(permanent_free != NULL)
-        permanent_free(cnt);
-      return NULL;
+#define ADDRESS_TYPE_INVALID -1
+#define ADDRESS_TYPE_IPV4     1
+#define ADDRESS_TYPE_IPV6     2
+#define ADDRESS_TYPE_DOMAIN   3
+int detect_address_type(char *address){
+  bool may_be_ipv4 = true;
+  char buffer[4], *c;
+  int number_of_chars_before_point = 0;
+  if(address[0] == '\0')
+    return ADDRESS_TYPE_INVALID;
+  for(c = address; *c != '\0'; c ++){
+    if(*c == ':')
+      return ADDRESS_TYPE_IPV6;
+    if((*c > 'f' && *c <= 'z') || (*c > 'F' && *c <= 'Z'))
+      return ADDRESS_TYPE_DOMAIN;
+    if(may_be_ipv4){
+      if(*c == '.'){
+        int num;
+        if(number_of_chars_before_point < 1 ||
+	   number_of_chars_before_point > 3){
+          may_be_ipv4 = false;
+          continue;
+        }
+	if(number_of_chars_before_point > 1 && buffer[0] == '0'){
+          may_be_ipv4 = false;
+          continue;
+        }
+	buffer[number_of_chars_before_point] = '\0';
+	num = atoi(buffer);
+	if(num > 255){
+          may_be_ipv4 = false;
+          continue;
+        }
+	number_of_chars_before_point = 0;
+	continue;
+      }
+      if(*c < '0' || *c > '9'){
+        may_be_ipv4 = false;
+	continue;
+      }
+      buffer[number_of_chars_before_point] = *c;
+      number_of_chars_before_point ++;
+      if(number_of_chars_before_point > 3){
+        may_be_ipv4 = false;
+	continue;
+      }
     }
-    temporary_buffer = get_rtc_connection_data(cnt -> _conn_handle);
-    memcpy(cnt -> local_data, temporary_buffer, size + 1);
-    free(temporary_buffer);
   }
-  return cnt;
+  if(may_be_ipv4)
+    return ADDRESS_TYPE_IPV4;
+  else
+    return ADDRESS_TYPE_DOMAIN;
 }
-#endif
 @
 
-
-\end
+\fim
