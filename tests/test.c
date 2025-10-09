@@ -75,8 +75,28 @@ void test_detect_address_type(void){
   if(response5 != 3)
     printf("ERROR: detect_address_type: Single letter not recognized as address\n");
   assert("Unit Test: 'detect_address_type'", response1 == 3 && response2 == 2 && response3 == 1
-	 && response4 == -1 && response5 == 3);
-  
+	 && response4 == -1 && response5 == 3);  
+}
+
+void test_connect_socket(void){
+  // The function 'connect_socket is an internal function.
+  // It gets a string as first argument: an address to connect (IPv4, IPv6 or domain name)
+  // It gets a string as second argument: a service name or a port number in decimal
+  // It gets either SOCK_STREAM (TCP) or SOCK_DGRAM (UDP) as third argument.
+  // It returns an integer representing an open socket descriptor or -1.
+  int response1 = connect_socket("", "", SOCK_STREAM);
+  if(response1 != -1)
+    printf("ERROR: connect_socket not signaled error connectiong to empty string.\n");
+  int response2 = connect_socket("www.example.org", "80", SOCK_STREAM);
+  if(response2 == -1)
+    printf("ERROR: connect_socket failed connecting to example.org (TCP).\n");
+  int response3 = connect_socket("8.8.8.8", "53", SOCK_DGRAM);
+  if(response3 == -1)
+    printf("ERROR: connect_socket failed connecting to 8.8.8.8 (UDP).\n");
+  if(response2 != -1 && response2 == response3)
+    printf("ERROR: connect_socket returned same port twice.\n");
+  assert("Unit Test: 'connect_socket'", response1 == -1 && response2 != -1 &&
+	 response3 != -1 && response2 != response3);
 }
 
 /*void test_initialization(void){
@@ -98,6 +118,7 @@ void test_detect_address_type(void){
 
 int main(int argc, char **argv){
   test_detect_address_type();
+  test_connect_socket();
   //test_initialization();
   imprime_resultado();
   return 0;

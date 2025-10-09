@@ -148,6 +148,9 @@ relates to this header, its structure is as follows:
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #endif
+#include <stdbool.h> // We need boolean types
+#include <string.h>  // We need 'memset'
+#include <unistd.h>  // We need 'close'
 @<Local Headers (network.c)@>
 //@<Local Macros (network.c)@>
 //@<Local Data Structures (network.c)@>
@@ -332,5 +335,61 @@ int detect_address_type(char *address){
     return ADDRESS_TYPE_DOMAIN;
 }
 @
+
+\subsecao{Connecting to an Address}
+
+When we connect to another machine, we need to know its address, its
+port, and whether the connection should be made via TCP or UDP. To do
+this, we will define a function that takes these three pieces of
+information as arguments, creates a socket, and connects to it,
+opening a connection with the specified machine.
+
+The function will take the following values as input:
+
+1) address: An address, which is a string containing either an IPv4,
+IPv6, or a domain name.
+
+2) port: A string containing a port number written in decimal digits,
+or alternatively, the name of a protocol recognized by the operating
+system we are running on, in case we want the OS to determine the
+correct port.
+
+3) A value that can be SOCK_STREAM (TCP) or SOCK_DGRAM (UDP).
+
+The return value will be an integer representing the identifier of a
+socket that has been opened and is connected to the specified address,
+or -1 if the connection could not be established.
+
+To implement this, we will rely on the getaddrinfo function, which
+will perform most of the work of interpreting the given address and
+generating structures that can then be used by the system call
+``connect'':
+
+@<Auxiliary Local Functions (network.c)@>=
+int connect_socket(char *address, char *port, int type){
+  struct addrinfo hints;
+  int s, sfd;
+  struct addrinfo *result, *rp;
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_UNSPEC;    /* Either IPv4 or IPv6 */
+  hints.ai_socktype = type;
+  s = getaddrinfo(address, port, &hints, &result);
+  if(s != 0)
+    return -1;
+  for (rp = result; rp != NULL; rp = rp->ai_next) {
+    sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    if(sfd == -1)
+      continue;
+    if(connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
+      break; /* Success */
+    close(sfd);
+  }
+  freeaddrinfo(result); /* Deallocating */
+  if(rp == NULL)
+    return -1;
+  return sfd;
+}
+@
+
 
 \fim

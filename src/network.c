@@ -1,36 +1,40 @@
 /*4:*/
-#line 146 "weaver-network_en.cweb"
+#line 158 "weaver-network.cweb"
 
 #include "network.h"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h> 
 #endif
+#include <stdbool.h>  
+#include <string.h>   
 /*5:*/
-#line 170 "weaver-network_en.cweb"
+#line 184 "weaver-network.cweb"
 
 #if defined(_WIN32)
 #include <winsock2.h> 
 #pragma comment(lib,"wsock32.lib")
 #endif
 /*:5*//*6:*/
-#line 182 "weaver-network_en.cweb"
+#line 195 "weaver-network.cweb"
 
 #if defined(__unix__)
 #include <sys/socket.h> 
+#include <sys/types.h> 
 #include <netinet/in.h> 
+#include <netdb.h> 
 #include <fcntl.h> 
 #endif
 /*:6*//*7:*/
-#line 202 "weaver-network_en.cweb"
+#line 218 "weaver-network.cweb"
 
 #include <stdlib.h>  
 /*:7*/
-#line 151 "weaver-network_en.cweb"
+#line 165 "weaver-network.cweb"
 
 
 
 /*8:*/
-#line 206 "weaver-network_en.cweb"
+#line 222 "weaver-network.cweb"
 
 
 
@@ -39,10 +43,10 @@ static void*(*temporary_alloc)(size_t)= malloc;
 static void(*permanent_free)(void*)= free;
 static void(*temporary_free)(void*)= free;
 /*:8*/
-#line 154 "weaver-network_en.cweb"
+#line 168 "weaver-network.cweb"
 
 /*11:*/
-#line 280 "weaver-network_en.cweb"
+#line 320 "weaver-network.cweb"
 
 #define ADDRESS_TYPE_INVALID -1
 #define ADDRESS_TYPE_IPV4     1
@@ -97,11 +101,39 @@ return ADDRESS_TYPE_IPV4;
 else
 return ADDRESS_TYPE_DOMAIN;
 }
-/*:11*/
-#line 155 "weaver-network_en.cweb"
+/*:11*//*12:*/
+#line 406 "weaver-network.cweb"
+
+int connect_socket(char*address,char*port,int type){
+struct addrinfo hints;
+int s,sfd;
+struct addrinfo*result,*rp;
+memset(&hints,0,sizeof(struct addrinfo));
+
+hints.ai_family= AF_UNSPEC;
+hints.ai_socktype= type;
+s= getaddrinfo(address,port,&hints,&result);
+if(s!=0)
+return-1;
+for(rp= result;rp!=NULL;rp= rp->ai_next){
+sfd= socket(rp->ai_family,rp->ai_socktype,rp->ai_protocol);
+if(sfd==-1)
+continue;
+if(connect(sfd,rp->ai_addr,rp->ai_addrlen)!=-1)
+break;
+close(sfd);
+}
+freeaddrinfo(result);
+if(rp==NULL)
+return-1;
+return sfd;
+}
+/*:12*/
+#line 169 "weaver-network.cweb"
 
 /*9:*/
-#line 215 "weaver-network_en.cweb"
+#line 231 "weaver-network.cweb"
+
 
 void _Winit_network(void*(*p_alloc)(size_t),void(*p_free)(void*),
 void*(*t_alloc)(size_t),void(*t_free)(void*)){
@@ -117,7 +149,7 @@ WSAStartup(MAKEWORD(2,2),&WsaData);
 return;
 }
 /*:9*//*10:*/
-#line 234 "weaver-network_en.cweb"
+#line 251 "weaver-network.cweb"
 
 void _Wfinish_network(void){
 #if defined(_WIN32) 
@@ -126,6 +158,6 @@ WSACleanup();
 return;
 }
 /*:10*/
-#line 156 "weaver-network_en.cweb"
+#line 170 "weaver-network.cweb"
 
 /*:4*/

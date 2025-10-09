@@ -161,6 +161,8 @@ associado a este cabeçaho, o código será este:
 #include <emscripten.h>
 #endif
 #include <stdbool.h> // Suporte a tipos booleanos
+#include <string.h>  // Usaremos 'memset'
+#include <unistd.h>  // Usaremos 'close'
 @<Cabeçalhos Locais (network.c)@>
 //@<Macros Locais (network.c)@>
 //@<Estrutura de Dados Locais (network.c)@>
@@ -194,7 +196,9 @@ padrão e não requer a ligação com bibliotecas externas:
 @<Cabeçalhos Locais (network.c)@>+=
 #if defined(__unix__)
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <fcntl.h>
 #endif
 @
@@ -369,5 +373,64 @@ int detect_address_type(char *address){
     return ADDRESS_TYPE_DOMAIN;
 }
 @
+
+\subsecao{Conectando a um Endereço}
+
+Quando nos conectamos a outra máquina, precisamos saber o seu
+endereço, a sua porta e se a conexão deve ser feita via TCP ou
+UDP. Para isso iremos definir uma função que recebe como argumento
+estas três informações, cria um socket e se conecta a ele abrindo uma
+conexão com a máquina indicada.
+
+A função irá receber os seguintes valores como entrada:
+
+1) ``address'': Um endereço. Que é uma string com um endereço IPv4,
+IPv6 ou um nome de domínio.
+
+2) ``port'': Uma string contendo um número de porta escrito com
+algarismos decimais. Ou, alternativamente, o nome de um protocolo
+reconhecido pelo Sistema Operacional em que estamos executando caso
+queiramos que o Sistema Operacional indique a porta correta.
+
+3) Um valor que pode ser SOCK_STREAM (TCP) ou SOCK_DGRAM (UDP).
+
+O valor de retorno será um inteiro que é o idendificador de um socket
+que foi aberto e está conectado ao endereço indicado. Ou -1 caso não
+tenha sido possível se conectar.
+
+Para implementarmos isso, iremos confiar na função ``getaddrinfo'' que
+fará a maior parte do trabalho de interpretar o endereço indicado e
+gerar estruturas que podem então ser usadas pela função de sistema
+``connect'':
+
+
+@<Funções Auxiliares Locais (network.c)@>=
+int connect_socket(char *address, char *port, int type){
+  struct addrinfo hints;
+  int s, sfd;
+  struct addrinfo *result, *rp;
+  memset(&hints, 0, sizeof(struct addrinfo));
+  hints.ai_family = AF_UNSPEC;    /* IPv4 ou IPv6 */
+  hints.ai_socktype = type;
+  s = getaddrinfo(address, port, &hints, &result);
+  if(s != 0)
+    return -1;
+  for (rp = result; rp != NULL; rp = rp->ai_next) {
+    sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    if(sfd == -1)
+      continue;
+    if(connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
+      break; /* Sucesso */
+    close(sfd);
+  }
+  freeaddrinfo(result); /* Desalocando*/
+  if(rp == NULL)
+    return -1;
+  return sfd;
+}
+@
+
+
+
 
 \fim

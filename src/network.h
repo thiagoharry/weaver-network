@@ -1,5 +1,5 @@
 /*3:*/
-#line 109 "weaver-network_en.cweb"
+#line 121 "weaver-network.cweb"
 
 #ifndef __WEAVER_NETWORK
 #define __WEAVER_NETWORK
@@ -11,7 +11,7 @@ extern"C"{
 
 
 /*1:*/
-#line 75 "weaver-network_en.cweb"
+#line 85 "weaver-network.cweb"
 
 void _Winit_network(void*(*permanent_alloc)(size_t),
 void(*permanent_free)(void*),
@@ -19,11 +19,11 @@ void*(*temporary_alloc)(size_t),
 void(*temporary_free)(void*));
 void _Wfinish_network(void);
 /*:1*//*2:*/
-#line 85 "weaver-network_en.cweb"
+#line 95 "weaver-network.cweb"
 
 struct connection*_Wcreate_connection(void);
 /*:2*/
-#line 119 "weaver-network_en.cweb"
+#line 131 "weaver-network.cweb"
 
 #ifdef __cplusplus
 }
