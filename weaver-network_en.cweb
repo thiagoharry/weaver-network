@@ -506,6 +506,51 @@ void f_255_19_normalize(uint64_t n[4]){
 }
 @
 
+For the sake of completeness, we can also create a second version of the
+normalization function. However, instead of normalizing a 256-bit
+number, we normalize a 512-bit number so that it becomes a field
+element. This will be useful later when we define multiplication, since
+our algorithm will produce a non-normalized value with many more bits
+after performing a simple multiplication. The second normalization
+function is:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_normalize2(uint64_t input[8], uint64_t output[4]){
+  int still_big, i;
+  uint64_t nineteen[4];
+  nineteen[0] = 0x0;
+  nineteen[1] = 0x0;
+  nineteen[2] = 0x0;
+  nineteen[3] = 0x0;
+  output[3] = input[7];
+  output[2] = input[6];
+  output[1] = input[5];
+  output[0] = input[4];
+  f_255_19_normalize(output);
+  for(i = 0; i < 4; i ++){
+    int bit;
+    for(bit = 0; bit < 8; bit ++){
+      int value = ((input[i] >> bit) % 2);
+      nineteen[3] = 19 * value;
+      f_255_19_incomplete_add(output, nineteen);
+      still_big = ((output[0] == 0x7fffffffffffffff) * (output[1] == ~0x0) * 
+                   (output[2] == ~0x0) * (output[3] > 0xffffffffffffffec));
+      output[0] -= output[0] * still_big;
+      output[1] -= output[1] * still_big;
+      output[2] -= output[2] * still_big;
+      output[3] -= 0xffffffffffffffed * still_big;
+    }
+  }
+}
+@
+
+The function above begins by performing normalization while
+considering the least significant 256 bits, as before. Then, for the
+more significant bits, note that each nonzero bit corresponds to
+adding a multiple of $2^{255}$ to the value obtained so far. For each
+such bit, we therefore add 19 to the accumulated value and renormalize
+it.
+
 Note that the code above does what we previously described, but in a
 somewhat more complicated way: it avoids conditionals and ensures that
 each iteration runs a fixed number of times. This is necessary in
