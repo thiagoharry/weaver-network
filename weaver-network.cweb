@@ -392,7 +392,7 @@ algarismos decimais. Ou, alternativamente, o nome de um protocolo
 reconhecido pelo Sistema Operacional em que estamos executando caso
 queiramos que o Sistema Operacional indique a porta correta.
 
-3) Um valor que pode ser SOCK_STREAM (TCP) ou SOCK_DGRAM (UDP).
+3) Um valor que pode ser SOCK\_STREAM (TCP) ou SOCK\_DGRAM (UDP).
 
 O valor de retorno será um inteiro que é o idendificador de um socket
 que foi aberto e está conectado ao endereço indicado. Ou -1 caso não
@@ -423,13 +423,174 @@ int connect_socket(char *address, char *port, int type){
       break; /* Sucesso */
     close(sfd);
   }
-  freeaddrinfo(result); /* Desalocando*/
+  freeaddrinfo(result); /* Desalocando */
   if(rp == NULL)
     return -1;
   return sfd;
 }
 @
 
+\secao{Primitivas Matemáticas}
+
+\subsecao{O Corpo Finito Módulo $2^{255}-19$}
+
+Uma parte considerável das operações criptográficas que realizaremos
+ocorrem em um corpo finito. Isto é, em uma estrutura matemática onde
+podemos realizar multiplicações e adições, mas onde o conjunto de
+elementos que podem ser somados e multiplicados é um número finito. No
+nosso caso, será um conjunto formado pelos inteiros que vãodo zero até
+$2^{255}-20$.
+
+A soma e a multiplicação sobre tais números inteiros vão se comportar
+de maneira muito semelhante à que estamos habituados quando lidamos
+com números inteiros comuns. Entretanto, após realizar qualquer
+operação, a resposta final é obtida dividindo o resultado por
+$2^{255}-19$ e substituindo o resultado obtido pelo resto desta
+divisão. Desta forma, a realização de qualquer operação matemática
+usual sempre será contida dentro de nosso intervalo finito.
+
+Por exemplo, a soma: $(2^{255}-20) + (1) = 0$. Pois o resultado desta
+soma se estivéssemos em um conjunto infinito de inteiros seria
+$2^{255}-20$. Mas este valor é maior do que podemos representar no
+nosso conjunto finito. Sendo assim, ele é substituído pelo resto da
+sua divisão por $2^{255}-19$, o que é zero.
+
+Cada elemento de nosso corpo finito pode ser representado dentro de
+vetores com quatro inteiros sem sinal de 64 bits. Esta será então a
+forma que escolheremos para representar os elementos deste corpo
+finito.
+
+Desta forma, o elemento zero de nosso grupo será:
+
+\alinhaverbatim
+{UINT64\_C(0x0), UINT64\_C(0x0), UINT64\_C(0x0), UINT64\_C(0x0)}
+\alinhanormal
+
+Enquanto o maior valor será:
+
+\alinhaverbatim
+{UINT64\_C(0x7fffffffffffffff), UINT64\_C(0xffffffffffffffff),
+ UINT64\_C(0xffffffffffffffff), UINT64\_C(0xffffffffffffffec)}
+\alinhanormal
+
+Como o bit mais significativo de toda a nossa lista sempre será zero
+para elementos de nosso grupo, isso significa que podemos sempre somar
+dois elementos do grupo e armazenar o resultado em um vetor de 4
+inteiros sem sinal de 64 bits, sem que ocorra um ``overflow'' que não
+possamos armazenar na estrutura.
+
+Podemos então somar dois valores usando a operação abaixo (que ainda
+está incompleta porque não se preocupa quando o resultado se torna
+maior do que o que pode ser representado no grupo):
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void f_255_19_incomplete_add(uint64_t destiny[4], uint64_t sum[4]){
+  int i;
+  uint64_t initial_value;
+  int carry = 0;
+  for(i = 3; i >= 0; i --){
+    initial_value = destiny[i];
+    destiny[i] += sum[i] + carry;
+    carry = (destiny[i] < initial_value);
+    carry += ((destiny[i] == initial_value) * (sum[i] != 0));
+  }
+}
+@
+
+De agora em diante, chamaremos o grupo de inteiros entre 0 e
+$2^{255}-19$ de $F_{2^{255}-19}$. Ou \monoespaco{f\_255\_19} quando
+queremos nor referir ao grupo no código, como foi feito na função
+acima.
+
+Este grupo tem uma característica que o torna cômodo para ser usado em
+operações em grupo. Quando fazemos uma operação de dois elementos
+dele, pode ser que podemos obter um valor maior que $2^{255}-19$, o
+que significa que o valor precisa ser normalizado de volta para dentro
+do grupo. Mas como:
+
+$$
+2^{255}\equiv 19 (mod\,\,2^{255}=19)
+$$
+
+Então qualquer múltiplo de $2^{255}$ pode ser substituído por um
+múltiplo de 19. Em suma, se obtivermos em uma soma um valor onde o
+último bit estiver ativo (ou seja, o bit correspondente a $2^{255}$),
+podemos então apenas marcar esse bit como zero e somar o restante do
+número com 19. E repetir o processo enquanto o último bit ainda
+estiver ativo. Depois, basta checar se o valor resultante está dentro
+dos limites do grupo. Se não estiver, existem apenas 19 valores
+inválidos que possuem o último bit igual a zero. Tratar eles é apenas
+uma questão de ajustar para zero os 3 números de 64 bits mais
+significativos e trocar o menos significativo pelo valor atual menos
+$0xffffffffffffffed$.
+
+O código que faz isso é:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void f_255_19_normalize(uint64_t n[4]){
+  int still_big;
+  uint64_t nineteen[4];
+  nineteen[0] = 0x0;
+  nineteen[1] = 0x0;
+  nineteen[2] = 0x0;
+  nineteen[3] = 0x0;
+  nineteen[3] = 19 * ((n[0] & 0x8000000000000000) == 0x8000000000000000);
+  n[0] = (n[0] & 0x7fffffffffffffff);
+  f_255_19_incomplete_add(n, nineteen);
+  still_big = ((n[0] == 0x7fffffffffffffff) * (n[1] == ~0x0) * 
+               (n[2] == ~0x0) * (n[3] > 0xffffffffffffffec));
+  n[0] -= n[0] * still_big;
+  n[1] -= n[1] * still_big;
+  n[2] -= n[2] * still_big;
+  n[3] -= 0xffffffffffffffed * still_big;
+}
+@
+
+Note que o código acima faz o que descrevemos antes, mas de uma forma
+um pouco mais complicada. Sem usar condicionais, e fazendo com que
+toda iteração ocorra um número fixo de vezes. Isso é necessário em
+código criptográfico para garantir que informação não seja vazada para
+qualquer atacante por meio da diferença de tempo de execução na
+execução de um algoritmo. Por este motivo, também evitamos operadores
+lógicos AND e OR para evitar curto-circuito na avaliação: quando ã
+expressão não é inteiramente avaliada porque o seu valor se torna
+evidente após as priemiras operações.
+
+De posse das funções de soma incompleta e de normalização, podemos
+implementar a função que efetivamente soma dois elementos de um grupo,
+gerando um terceiro elemento:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void f_255_19_add(uint64_t a[4], uint64_t b[4]){ // a = a + b
+  f_255_19_incomplete_add(a, b);
+  f_255_19_normalize(a);
+}
+@
+
+Para fazer a subtração, basta calcular qual é o inverso aditivo de um
+elemento do grupo, não precisamos de uma função de subtração. Para
+obter o inverso aditivo, basta obter o maior elemento do grupo,
+subtrair o elemento dele e somar 1.
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void f_255_19_additive_inverse(uint64_t n[4]){ // n = -n
+  uint64_t biggest[4], one[4], initial;
+  int i, carry = 0;
+  biggest[0] = 0x7fffffffffffffff;
+  biggest[1] = 0xffffffffffffffff;
+  biggest[2] = 0xffffffffffffffff;
+  biggest[3] = 0xffffffffffffffec;
+  one[0] = one[1] = one[2] = 0;
+  one[3] = 1;
+  for(i = 3; i >= 0 ; i --){
+    initial = n[i];
+    n[i] = biggest[i] - n[i] - carry;
+    carry = (n[i] > biggest[i]);
+    carry = (n[i] == biggest[i]) * (initial != 0);
+  }
+  f_255_19_add(n, one);
+}
+@
 
 
 

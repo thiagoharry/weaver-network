@@ -185,7 +185,9 @@ libraries:
 @<Local Headers (network.c)@>+=
 #if defined(__unix__)
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <fcntl.h>
 #endif
 @
@@ -388,6 +390,165 @@ int connect_socket(char *address, char *port, int type){
   if(rp == NULL)
     return -1;
   return sfd;
+}
+@
+
+
+\secao{Mathematical Primitives}
+
+\subsecao{The Finite Field Modulo $2^{255}-19$}
+
+A considerable portion of the cryptographic operations we will perform
+take place in a finite field. That is, in a mathematical structure where
+we can perform multiplications and additions, but where the set of
+elements that can be added and multiplied is finite. In our case, it will
+be a set formed by the integers ranging from zero up to $2^{255}-20$.
+
+Addition and multiplication over such integers behave very similarly to
+what we are used to when working with ordinary integers. However, after
+performing any operation, the final result is obtained by dividing the
+value by $2^{255}-19$  and replacing it with the remainder of this
+division. In this way, the result of any usual mathematical operation
+always remains within our finite interval.
+
+For example, the sum: $(2^{255}-20) + (1) = 0$. In an infinite set of
+integers, this sum would yield $2^{255}-20$. But this value is larger
+than what we can represent in our finite set. Therefore, it is
+replaced by the remainder of its division by $2^{255}-19$, which is
+zero.
+
+Each element of our finite field can be represented using vectors of four
+unsigned 64-bit integers. This is the representation we will use for the
+elements of this finite field.
+
+Thus, the zero element of our group will be:
+
+\alinhaverbatim
+{UINT64\_C(0x0), UINT64\_C(0x0), UINT64\_C(0x0), UINT64\_C(0x0)}
+\alinhanormal
+
+While the greatest value inn the field will be:
+
+\alinhaverbatim
+{UINT64\_C(0x7fffffffffffffff), UINT64\_C(0xffffffffffffffff),
+ UINT64\_C(0xffffffffffffffff), UINT64\_C(0xffffffffffffffec)}
+\alinhanormal
+
+Since the most significant bit of our entire list will always be zero
+for elements of our group, this means we can always add two group
+elements and store the result in a vector of four unsigned 64-bit
+integers without causing an overflow that we would be unable to
+represent in the structure.
+
+We can then add two values using the operation below (which is still
+incomplete because it does not yet account for the result becoming
+larger than what can be represented in the group):
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_incomplete_add(uint64_t destiny[4], uint64_t sum[4]){
+  int i;
+  uint64_t initial_value;
+  int carry = 0;
+  for(i = 3; i >= 0; i --){
+    initial_value = destiny[i];
+    destiny[i] += sum[i] + carry;
+    carry = (destiny[i] < initial_value);
+    carry += ((destiny[i] == initial_value) * (sum[i] != 0));
+  }
+}
+@
+
+From now on, we will refer to the group of integers between 0 and
+$2^{255}-19$ as $F_{2^{255}-19}$, or f_255_19 when referring to
+the group in code, as we did in the function above.
+
+This group has a characteristic that makes it convenient for use in
+group operations. When we perform an operation on two of its elements,
+we may obtain a value greater than $2^{255}-19$, which means the value
+must be normalized back into the group. But thanks to the following
+property:
+
+$$
+2^{255}\equiv 19 (mod\,\,2^{255}=19)
+$$
+
+Thus, any multiple of $2^{255}-19$ can be replaced by a multiple of
+19.  In short, if during an addition we obtain a value where the last
+bit is set (that is, the bit corresponding to $2^{255}$), we can
+simply clear that bit and add 19 to the remaining number. Then we
+repeat the process as long as the last bit is still set. After that,
+we only need to check whether the resulting value lies within the
+bounds of the group. If it does not, there are only 19 invalid values
+whose most significant bit is zero. Handling them is simply a matter
+of setting the three most significant 64-bit words to zero and
+replacing the least significant one with the current value minus
+0xffffffffffffffed.
+
+The code that performs this is:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_normalize(uint64_t n[4]){
+  int still_big;
+  uint64_t nineteen[4];
+  nineteen[0] = 0x0;
+  nineteen[1] = 0x0;
+  nineteen[2] = 0x0;
+  nineteen[3] = 0x0;
+  nineteen[3] = 19 * ((n[0] & 0x8000000000000000) == 0x8000000000000000);
+  n[0] = (n[0] & 0x7fffffffffffffff);
+  f_255_19_incomplete_add(n, nineteen);
+  still_big = (n[0] == 0x7fffffffffffffff) * (n[1] == ~0x0) * 
+              (n[2] == ~0x0) * (n[3] > 0xffffffffffffffec);
+  n[0] -= n[0] * still_big;
+  n[1] -= n[1] * still_big;
+  n[2] -= n[2] * still_big;
+  n[3] -= 0xffffffffffffffed * still_big;
+}
+@
+
+Note that the code above does what we previously described, but in a
+somewhat more complicated way: it avoids conditionals and ensures that
+each iteration runs a fixed number of times. This is necessary in
+cryptographic code to guarantee that no information is leaked to an
+attacker through timing differences in the execution of an
+algorithm. For this reason, we also avoid the logical AND and OR
+operators to prevent short-circuit evaluation: cases where the
+expression is not fully evaluated because its value becomes evident
+after the first operations.
+
+With the incomplete addition function and the normalization function in
+hand, we can implement the function that actually adds two elements of
+the group, producing a third element:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_add(uint64_t a[4], uint64_t b[4]){ // a = a + b
+  f_255_19_incomplete_add(a, b);
+  f_255_19_normalize(a);
+}
+@
+
+To perform subtraction, we only need to compute the additive inverse of
+a group element; we do not need a separate subtraction function. To
+obtain the additive inverse, we simply take the largest element of the
+group, subtract the element from it, and add 1.
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_additive_inverse(uint64_t n[4]){ // n = -n
+  uint64_t biggest[4], one[4], initial;
+  int i, carry = 0;
+  biggest[0] = 0x7fffffffffffffff;
+  biggest[1] = 0xffffffffffffffff;
+  biggest[2] = 0xffffffffffffffff;
+  biggest[3] = 0xffffffffffffffec;
+  one[0] = one[1] = one[2] = 0;
+  one[3] = 1;
+  for(i = 3; i >= 0 ; i --){
+    initial = n[i];
+    n[i] = biggest[i] - n[i] - carry;
+    carry = (n[i] > biggest[i]);
+    carry = (n[i] == biggest[i]) * (initial != 0);
+  }
+  f_255_19_add(n, one);
 }
 @
 

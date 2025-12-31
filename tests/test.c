@@ -1,7 +1,9 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <math.h>
+#include <inttypes.h>
 #if defined(_WIN32)
 #include <Windows.h>
 #else
@@ -99,6 +101,76 @@ void test_connect_socket(void){
 	 response3 != -1 && response2 != response3);
 }
 
+void test_f_255_19_add(void){
+  bool error = false;
+  uint64_t sample1[4], zero[4], one[4], biggest[4];
+  int i;
+  sample1[0] = UINT64_C(0x0363e4c133519b97);
+  sample1[1] = UINT64_C(0x7ed11a9faa6bf87d);
+  sample1[2] = UINT64_C(0x55945c9a0368341f);
+  sample1[3] = UINT64_C(0x0613a4ed89eaa33a);
+  zero[0] = zero[1] = zero[2] = zero[3] = 0x0;
+  one[0] = one[1] = one[2] = 0x0; one[3] = 0x1;
+  biggest[0] = UINT64_C(0x7fffffffffffffff);
+  biggest[1] = UINT64_C(0xffffffffffffffff);
+  biggest[2] = UINT64_C(0xffffffffffffffff);
+  biggest[3] = UINT64_C(0xffffffffffffffec);
+  f_255_19_add(sample1, zero);
+  if(sample1[0] != UINT64_C(0x0363e4c133519b97) ||
+     sample1[1] != UINT64_C(0x7ed11a9faa6bf87d) ||
+     sample1[2] != UINT64_C(0x55945c9a0368341f) ||
+     sample1[3] != UINT64_C(0x0613a4ed89eaa33a)){
+    printf("ERROR: Group F_255_19: zero is not neutral in addition.\n");
+    error = true;
+  }
+  if(!error){
+    for(i = 0; i < 255; i ++){
+      f_255_19_add(one, one);
+    }
+    if(one[0] != 0x0 || one[1] != 0x0 || one[2] != 0x0 || one[3] != 19){
+      printf("ERROR: Group F_255_19: 2^255 is not 19.\n");
+      error = true;
+    }
+  }
+  if(!error){
+    f_255_19_add(biggest, biggest);
+    if(biggest[0] != UINT64_C(0x7fffffffffffffff) ||
+       biggest[1] != UINT64_C(0xffffffffffffffff) ||
+       biggest[2] != UINT64_C(0xffffffffffffffff) ||
+       biggest[3] != UINT64_C(0xffffffffffffffeb)){
+      printf("ERROR: Group F_255_19: (-1)+(-1) is not -2.\n");
+      error = true;
+    }
+  }
+  assert("Unit Test: 'f_255_19_add'", !error);
+}
+
+void test_f_255_19_additive_inverse(void){
+  bool error = false;
+  uint64_t sample[4], inverse[4], zero[4];
+  sample[0] = inverse[0] = 0x03D759DE9824881D;
+  sample[1] = inverse[1] = 0x572F1E0FDA9F1845;
+  sample[2] = inverse[2] = 0x07ADE778AA2C1261;
+  sample[3] = inverse[3] = 0x9DF45583E16C6D03;
+  zero[0] = zero[1] = zero[2] = zero[3] = 0;
+  f_255_19_additive_inverse(zero);
+  if(zero[0] != 0 || zero[1] != 0 || zero[2] != 0 || zero[3] != 0){
+    printf("%lx %lx %lx %lx\n", sample[0], sample[1], sample[2], sample[3]);
+    printf("ERROR: Group F_255_19: -0 is not 0.\n");
+    error = true;
+  }
+  if(!error){
+    f_255_19_additive_inverse(inverse);
+    f_255_19_add(sample, inverse);
+    if(sample[0] != 0 || sample[1] != 0 || sample[2] != 0 || sample[3] != 0){
+      printf("%lu %lu %lu %lu\n", sample[0], sample[1], sample[2], sample[3]);
+      printf("ERROR: Group F_255_19: Wrong inverse additive number\n");
+      error = true;
+    }
+  }
+  assert("Unit Test: 'f_255_19_additive_inverse'", !error);
+}
+
 /*void test_initialization(void){
   struct connection *c;
   _Winit_network(malloc, free, malloc, free);
@@ -119,6 +191,8 @@ void test_connect_socket(void){
 int main(int argc, char **argv){
   test_detect_address_type();
   test_connect_socket();
+  test_f_255_19_add();
+  test_f_255_19_additive_inverse();
   //test_initialization();
   imprime_resultado();
   return 0;
