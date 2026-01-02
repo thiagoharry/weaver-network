@@ -139,6 +139,10 @@ void test_f_255_19_add(void){
        biggest[2] != UINT64_C(0xffffffffffffffff) ||
        biggest[3] != UINT64_C(0xffffffffffffffeb)){
       printf("ERROR: Group F_255_19: (-1)+(-1) is not -2.\n");
+      printf("EXPECTED: 0x7fffffffffffffff 0xffffffffffffffff "
+	     "0xffffffffffffffff 0xffffffffffffffeb\n");
+      printf("FOUND:    %lx %lx %lx %lx\n", biggest[0], biggest[1],
+	     biggest[2], biggest[3]);
       error = true;
     }
   }
@@ -171,6 +175,60 @@ void test_f_255_19_additive_inverse(void){
   assert("Unit Test: 'f_255_19_additive_inverse'", !error);
 }
 
+void test_f_255_19_multiply(void){
+  bool error = false;
+  uint64_t sample1[4], zero[4], one[4], biggest[4], two[4];
+  int i;
+  sample1[0] = UINT64_C(0x0363e4c133519b97);
+  sample1[1] = UINT64_C(0x7ed11a9faa6bf87d);
+  sample1[2] = UINT64_C(0x55945c9a0368341f);
+  sample1[3] = UINT64_C(0x0613a4ed89eaa33a);
+  zero[0] = zero[1] = zero[2] = zero[3] = 0x0;
+  one[0] = one[1] = one[2] = 0x0; one[3] = 0x1;
+  two[0] = two[1] = two[2] = 0x0; two[3] = 0x2;
+  biggest[0] = UINT64_C(0x7fffffffffffffff);
+  biggest[1] = UINT64_C(0xffffffffffffffff);
+  biggest[2] = UINT64_C(0xffffffffffffffff);
+  biggest[3] = UINT64_C(0xffffffffffffffec);
+  f_255_19_multiply(sample1, one);
+  if(sample1[0] != UINT64_C(0x0363e4c133519b97) ||
+     sample1[1] != UINT64_C(0x7ed11a9faa6bf87d) ||
+     sample1[2] != UINT64_C(0x55945c9a0368341f) ||
+     sample1[3] != UINT64_C(0x0613a4ed89eaa33a)){
+    printf("ERROR: Group F_255_19: one is not neutral in multiplication.\n");
+    error = true;
+  }
+  if(!error){
+    for(i = 0; i < 255; i ++){
+      f_255_19_multiply(one, two);
+    }
+    if(one[0] != 0x0 || one[1] != 0x0 || one[2] != 0x0 || one[3] != 19){
+      printf("ERROR: Group F_255_19: 2^255 is not 19.\n");
+      error = true;
+    }
+  }
+  if(!error){
+    f_255_19_multiply(biggest, biggest);
+    if(biggest[0] != UINT64_C(0x0) ||
+       biggest[1] != UINT64_C(0x0) ||
+       biggest[2] != UINT64_C(0x0) ||
+       biggest[3] != UINT64_C(0x1)){
+      printf("ERROR: Group F_255_19: (-1)(-1) is not 1.\n");
+      printf("EXPECTED: 0 0 0 1\n");
+      printf("FOUND:    %lx %lx %lx %lx\n", biggest[0], biggest[1],
+	     biggest[2], biggest[3]);
+      error = true;
+      // 0x3fffffffffffffff.ffffffffffffffff.ffffffffffffffff.ffffffffffffffec.0000000000000000.0000000000000000.0000000000000000.0000000000000190
+      // is indeed the multiplication. The error is when normalizing
+      // Expected: begin in 0x190
+      // Add 0xfb (0x28b, não 1)
+      // Normalizing is wrong!
+    }
+  }
+  assert("Unit Test: 'f_255_19_multiply'", !error);
+}
+
+
 /*void test_initialization(void){
   struct connection *c;
   _Winit_network(malloc, free, malloc, free);
@@ -193,6 +251,7 @@ int main(int argc, char **argv){
   test_connect_socket();
   test_f_255_19_add();
   test_f_255_19_additive_inverse();
+  test_f_255_19_multiply();
   //test_initialization();
   imprime_resultado();
   return 0;

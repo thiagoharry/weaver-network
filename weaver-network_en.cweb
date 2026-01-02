@@ -445,11 +445,11 @@ incomplete because it does not yet account for the result becoming
 larger than what can be represented in the group):
 
 @<Auxiliary Local Functions (network.c)@>+=
-void f_255_19_incomplete_add(uint64_t destiny[4], uint64_t sum[4]){
+void f_255_19_incomplete_add(uint64_t destiny[4], uint64_t sum[4], int size){
   int i;
   uint64_t initial_value;
   int carry = 0;
-  for(i = 3; i >= 0; i --){
+  for(i = size - 1; i >= 0; i --){
     initial_value = destiny[i];
     destiny[i] += sum[i] + carry;
     carry = (destiny[i] < initial_value);
@@ -496,7 +496,7 @@ void f_255_19_normalize(uint64_t n[4]){
   nineteen[3] = 0x0;
   nineteen[3] = 19 * ((n[0] & 0x8000000000000000) == 0x8000000000000000);
   n[0] = (n[0] & 0x7fffffffffffffff);
-  f_255_19_incomplete_add(n, nineteen);
+  f_255_19_incomplete_add(n, nineteen, 4);
   still_big = (n[0] == 0x7fffffffffffffff) * (n[1] == ~0x0) * 
               (n[2] == ~0x0) * (n[3] > 0xffffffffffffffec);
   n[0] -= n[0] * still_big;
@@ -505,51 +505,6 @@ void f_255_19_normalize(uint64_t n[4]){
   n[3] -= 0xffffffffffffffed * still_big;
 }
 @
-
-For the sake of completeness, we can also create a second version of the
-normalization function. However, instead of normalizing a 256-bit
-number, we normalize a 512-bit number so that it becomes a field
-element. This will be useful later when we define multiplication, since
-our algorithm will produce a non-normalized value with many more bits
-after performing a simple multiplication. The second normalization
-function is:
-
-@<Auxiliary Local Functions (network.c)@>+=
-void f_255_19_normalize2(uint64_t input[8], uint64_t output[4]){
-  int still_big, i;
-  uint64_t nineteen[4];
-  nineteen[0] = 0x0;
-  nineteen[1] = 0x0;
-  nineteen[2] = 0x0;
-  nineteen[3] = 0x0;
-  output[3] = input[7];
-  output[2] = input[6];
-  output[1] = input[5];
-  output[0] = input[4];
-  f_255_19_normalize(output);
-  for(i = 0; i < 4; i ++){
-    int bit;
-    for(bit = 0; bit < 8; bit ++){
-      int value = ((input[i] >> bit) % 2);
-      nineteen[3] = 19 * value;
-      f_255_19_incomplete_add(output, nineteen);
-      still_big = ((output[0] == 0x7fffffffffffffff) * (output[1] == ~0x0) * 
-                   (output[2] == ~0x0) * (output[3] > 0xffffffffffffffec));
-      output[0] -= output[0] * still_big;
-      output[1] -= output[1] * still_big;
-      output[2] -= output[2] * still_big;
-      output[3] -= 0xffffffffffffffed * still_big;
-    }
-  }
-}
-@
-
-The function above begins by performing normalization while
-considering the least significant 256 bits, as before. Then, for the
-more significant bits, note that each nonzero bit corresponds to
-adding a multiple of $2^{255}$ to the value obtained so far. For each
-such bit, we therefore add 19 to the accumulated value and renormalize
-it.
 
 Note that the code above does what we previously described, but in a
 somewhat more complicated way: it avoids conditionals and ensures that
@@ -567,7 +522,7 @@ the group, producing a third element:
 
 @<Auxiliary Local Functions (network.c)@>+=
 void f_255_19_add(uint64_t a[4], uint64_t b[4]){ // a = a + b
-  f_255_19_incomplete_add(a, b);
+  f_255_19_incomplete_add(a, b, 4);
   f_255_19_normalize(a);
 }
 @
@@ -596,6 +551,116 @@ void f_255_19_additive_inverse(uint64_t n[4]){ // n = -n
   f_255_19_add(n, one);
 }
 @
+
+Before moving on to multiplication, let us first prepare by creating
+another normalization function. Earlier, we created a function that
+takes a 256-bit number and transforms it into its version modulo
+$2^{255}-19$, and such a transformation is necessary to correctly
+compute addition in our finite field. For multiplication, we will also
+need a normalization function that does the same for 510-bit numbers.
+
+To normalize such numbers, we will once again rely on the property that
+$2^{255}$ is equal to 19 modulo $2^{255}-19$. Note that a 512-bit
+number is represented by the sequence:
+
+$$ (b_{509}, \ldots b_{256}, b_{255}, b_{254},
+\ldots, b_0) $$
+
+Which can be written as:
+
+$$(b_{509}, \ldots, b_{255})\times19 + (b_{254}, \ldots, b_0) $$
+
+Now we can use this to write the normalization function:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_normalize2(uint64_t src[8], uint64_t dst[4]){
+  // Copying bits b_0 to b_{254}:
+  dst[3] = src[7];
+  dst[2] = src[6];
+  dst[1] = src[5];
+  dst[0] = src[4] & 0x7fffffffffffffff;
+  // Dealing with bits from b_{255} to b_{509}:
+  {
+    int i;
+    uint64_t aux[4], aux_copy[4];
+    aux[3] = (src[4] >> 63); //b_{255}
+    aux[3] += (src[3] << 1); // Bits b_{256} to b_{318}
+    aux[2] = (src[3] >> 63); // b_{319}
+    aux[2] += (src[2] << 1); // Bits b_{320} to b_{382}
+    aux[1] = (src[2] >> 63); // b_{383}
+    aux[1] += (src[1] << 1); // Bits b_{384} to b_{446}
+    aux[0] = (src[1] >> 63); // b_{447}
+    aux[0] += ((src[0] << 2) >> 1); // b_{448} to b_{509}
+    memcpy(aux_copy, aux, sizeof(uint64_t) * 4);
+    for(i = 0; i < 4; i ++){ // Multiply aux by 16
+      f_255_19_add(aux, aux);
+    }
+    for(i = 0; i < 3; i ++){ // Compute aux * 19
+      f_255_19_add(aux, aux_copy);
+    }
+    f_255_19_add(dst, aux); // Add to result
+  }
+}
+@
+
+Now let us move on to multiplication. First, we write an algorithm that
+multiplies two 256-bit numbers, producing a 512-bit result. Later, we
+will normalize the result so that the value lies within our field:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_incomplete_multiply(uint64_t a[4], uint64_t b[4], uint64_t r[8]){
+  bool little_endian = true; // TODO: Set in initialization
+  uint64_t aux[8];
+  uint32_t a32[8], b32[8], aux32[16], carry;
+  int i, j;
+  memset(r, 0, sizeof(uint64_t) * 8);
+  // Convert 'a' and 'b' to uint32_t array:
+  memcpy(a32, a, sizeof(uint64_t) * 4);
+  memcpy(b32, b, sizeof(uint64_t) * 4);
+  if(little_endian){
+    for(i = 0; i < 8; i += 2){
+      uint32_t tmp = a32[i];
+      a32[i] = a32[i + 1];
+      a32[i + 1] = tmp;
+      tmp = b32[i];
+      b32[i] = b32[i + 1];
+      b32[i + 1] = tmp;
+    }
+  }
+  for(i = 7; i >= 0; i --){ // Multiplication algorithm
+    memset(aux32, 0, sizeof(uint64_t) * 8);
+    carry = 0;
+    for(j = 7; j >= 0; j --){
+      uint64_t result = ((uint64_t) a32[j]) * ((uint64_t) b32[i]) + carry;
+      carry = (uint32_t) (result / 0x100000000);
+      aux32[1 + i + j ] = result % 0x100000000;
+    }
+    aux32[1 + i + j] = carry;
+    if(little_endian){ // Convert intermediary result to uint64_t array
+      for(j = 0; j < 16; j += 2){
+        uint32_t tmp = aux32[j];
+	aux32[j] = aux32[j + 1];
+	aux32[j + 1] = tmp;
+      }
+    }
+    memcpy(aux, aux32, sizeof(uint64_t) * 8);
+    f_255_19_incomplete_add(r, aux, 8); // Add to result
+  }
+}
+@
+
+And once we have an algorithm for multiplying 256-bit numbers that
+produces a 512-bit result, we can use our normalization function to
+complete the multiplication function in our finite field:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_multiply(uint64_t a[4], uint64_t b[4]){ // a = a * b
+  uint64_t aux[8];
+  f_255_19_incomplete_multiply(a, b, aux);
+  f_255_19_normalize2(aux, a);
+}
+@
+
 
 
 \fim

@@ -134,11 +134,11 @@ return sfd;
 /*:12*//*13:*/
 #line 447 "weaver-network_en.cweb"
 
-void f_255_19_incomplete_add(uint64_t destiny[4],uint64_t sum[4]){
+void f_255_19_incomplete_add(uint64_t destiny[4],uint64_t sum[4],int size){
 int i;
 uint64_t initial_value;
 int carry= 0;
-for(i= 3;i>=0;i--){
+for(i= size-1;i>=0;i--){
 initial_value= destiny[i];
 destiny[i]+= sum[i]+carry;
 carry= (destiny[i]<initial_value);
@@ -157,7 +157,7 @@ nineteen[2]= 0x0;
 nineteen[3]= 0x0;
 nineteen[3]= 19*((n[0]&0x8000000000000000)==0x8000000000000000);
 n[0]= (n[0]&0x7fffffffffffffff);
-f_255_19_incomplete_add(n,nineteen);
+f_255_19_incomplete_add(n,nineteen,4);
 still_big= (n[0]==0x7fffffffffffffff)*(n[1]==~0x0)*
 (n[2]==~0x0)*(n[3]> 0xffffffffffffffec);
 n[0]-= n[0]*still_big;
@@ -166,44 +166,14 @@ n[2]-= n[2]*still_big;
 n[3]-= 0xffffffffffffffed*still_big;
 }
 /*:14*//*15:*/
-#line 517 "weaver-network_en.cweb"
-
-void f_255_19_normalize2(uint64_t input[8],uint64_t output[4]){
-int still_big,i;
-uint64_t nineteen[4];
-nineteen[0]= 0x0;
-nineteen[1]= 0x0;
-nineteen[2]= 0x0;
-nineteen[3]= 0x0;
-output[3]= input[7];
-output[2]= input[6];
-output[1]= input[5];
-output[0]= input[4];
-f_255_19_normalize(output);
-for(i= 0;i<4;i++){
-int bit;
-for(bit= 0;bit<8;bit++){
-int value= ((input[i]>>bit)%2);
-nineteen[3]= 19*value;
-f_255_19_incomplete_add(output,nineteen);
-still_big= ((output[0]==0x7fffffffffffffff)*(output[1]==~0x0)*
-(output[2]==~0x0)*(output[3]> 0xffffffffffffffec));
-output[0]-= output[0]*still_big;
-output[1]-= output[1]*still_big;
-output[2]-= output[2]*still_big;
-output[3]-= 0xffffffffffffffed*still_big;
-}
-}
-}
-/*:15*//*16:*/
-#line 568 "weaver-network_en.cweb"
+#line 523 "weaver-network_en.cweb"
 
 void f_255_19_add(uint64_t a[4],uint64_t b[4]){
-f_255_19_incomplete_add(a,b);
+f_255_19_incomplete_add(a,b,4);
 f_255_19_normalize(a);
 }
-/*:16*//*17:*/
-#line 580 "weaver-network_en.cweb"
+/*:15*//*16:*/
+#line 535 "weaver-network_en.cweb"
 
 void f_255_19_additive_inverse(uint64_t n[4]){
 uint64_t biggest[4],one[4],initial;
@@ -222,7 +192,88 @@ carry= (n[i]==biggest[i])*(initial!=0);
 }
 f_255_19_add(n,one);
 }
-/*:17*/
+/*:16*//*17:*/
+#line 575 "weaver-network_en.cweb"
+
+void f_255_19_normalize2(uint64_t src[8],uint64_t dst[4]){
+
+dst[3]= src[7];
+dst[2]= src[6];
+dst[1]= src[5];
+dst[0]= src[4]&0x7fffffffffffffff;
+
+{
+int i;
+uint64_t aux[4],aux_copy[4];
+aux[3]= (src[4]>>63);
+aux[3]+= (src[3]<<1);
+aux[2]= (src[3]>>63);
+aux[2]+= (src[2]<<1);
+aux[1]= (src[2]>>63);
+aux[1]+= (src[1]<<1);
+aux[0]= (src[1]>>63);
+aux[0]+= ((src[0]<<2)>>1);
+memcpy(aux_copy,aux,sizeof(uint64_t)*4);
+for(i= 0;i<4;i++){
+f_255_19_add(aux,aux);
+}
+for(i= 0;i<3;i++){
+f_255_19_add(aux,aux_copy);
+}
+f_255_19_add(dst,aux);
+}
+}
+/*:17*//*18:*/
+#line 610 "weaver-network_en.cweb"
+
+void f_255_19_incomplete_multiply(uint64_t a[4],uint64_t b[4],uint64_t r[8]){
+bool little_endian= true;
+uint64_t aux[8];
+uint32_t a32[8],b32[8],aux32[16],carry;
+int i,j;
+memset(r,0,sizeof(uint64_t)*8);
+
+memcpy(a32,a,sizeof(uint64_t)*4);
+memcpy(b32,b,sizeof(uint64_t)*4);
+if(little_endian){
+for(i= 0;i<8;i+= 2){
+uint32_t tmp= a32[i];
+a32[i]= a32[i+1];
+a32[i+1]= tmp;
+tmp= b32[i];
+b32[i]= b32[i+1];
+b32[i+1]= tmp;
+}
+}
+for(i= 7;i>=0;i--){
+memset(aux32,0,sizeof(uint64_t)*8);
+carry= 0;
+for(j= 7;j>=0;j--){
+uint64_t result= ((uint64_t)a32[j])*((uint64_t)b32[i])+carry;
+carry= (uint32_t)(result/0x100000000);
+aux32[1+i+j]= result%0x100000000;
+}
+aux32[1+i+j]= carry;
+if(little_endian){
+for(j= 0;j<16;j+= 2){
+uint32_t tmp= aux32[j];
+aux32[j]= aux32[j+1];
+aux32[j+1]= tmp;
+}
+}
+memcpy(aux,aux32,sizeof(uint64_t)*8);
+f_255_19_incomplete_add(r,aux,8);
+}
+}
+/*:18*//*19:*/
+#line 656 "weaver-network_en.cweb"
+
+void f_255_19_multiply(uint64_t a[4],uint64_t b[4]){
+uint64_t aux[8];
+f_255_19_incomplete_multiply(a,b,aux);
+f_255_19_normalize2(aux,a);
+}
+/*:19*/
 #line 158 "weaver-network_en.cweb"
 
 /*9:*/
