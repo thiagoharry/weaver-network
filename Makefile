@@ -8,6 +8,10 @@ test:
 	ctangle weaver-network.cweb
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c -o test_network
 	./test_network
+benchmark:
+	ctangle weaver-network.cweb
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/benchmark.c -o run_benchmark
+	./run_benchmark
 test_en:
 	ctangle weaver-network_en.cweb
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -DW_FORCE_LANDSCAPE -DW_DEBUG_INTERFACE -Wall -O2 tests/test.c -o test_network 

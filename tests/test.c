@@ -141,8 +141,8 @@ void test_f_255_19_add(void){
       printf("ERROR: Group F_255_19: (-1)+(-1) is not -2.\n");
       printf("EXPECTED: 0x7fffffffffffffff 0xffffffffffffffff "
 	     "0xffffffffffffffff 0xffffffffffffffeb\n");
-      printf("FOUND:    %lx %lx %lx %lx\n", biggest[0], biggest[1],
-	     biggest[2], biggest[3]);
+      printf("FOUND:    %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	     biggest[0], biggest[1], biggest[2], biggest[3]);
       error = true;
     }
   }
@@ -159,7 +159,8 @@ void test_f_255_19_additive_inverse(void){
   zero[0] = zero[1] = zero[2] = zero[3] = 0;
   f_255_19_additive_inverse(zero);
   if(zero[0] != 0 || zero[1] != 0 || zero[2] != 0 || zero[3] != 0){
-    printf("%lx %lx %lx %lx\n", sample[0], sample[1], sample[2], sample[3]);
+    printf("%"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	   sample[0], sample[1], sample[2], sample[3]);
     printf("ERROR: Group F_255_19: -0 is not 0.\n");
     error = true;
   }
@@ -167,13 +168,61 @@ void test_f_255_19_additive_inverse(void){
     f_255_19_additive_inverse(inverse);
     f_255_19_add(sample, inverse);
     if(sample[0] != 0 || sample[1] != 0 || sample[2] != 0 || sample[3] != 0){
-      printf("%lu %lu %lu %lu\n", sample[0], sample[1], sample[2], sample[3]);
+      printf("%"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	     sample[0], sample[1], sample[2], sample[3]);
       printf("ERROR: Group F_255_19: Wrong inverse additive number\n");
       error = true;
     }
   }
   assert("Unit Test: 'f_255_19_additive_inverse'", !error);
 }
+
+void test_f_255_19_multiplicative_inverse(void){
+  bool error = false;
+  uint64_t sample[4], inverse[4], one[4];
+  sample[0] = inverse[0] = 0x03D759DE9824881D;
+  sample[1] = inverse[1] = 0x572F1E0FDA9F1845;
+  sample[2] = inverse[2] = 0x07ADE778AA2C1261;
+  sample[3] = inverse[3] = 0x9DF45583E16C6D03;
+  one[0] = one[1] = one[2] = 0; one[3] = 1;
+  f_255_19_multiplicative_inverse(one);
+  if(one[0] != 0 || one[1] != 0 || one[2] != 0 || one[3] != 1){
+    printf("%"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	   sample[0], sample[1], sample[2], sample[3]);
+    printf("ERROR: Group F_255_19: 1^(-1) is not 1.\n");
+    error = true;
+  }
+  if(!error){
+    uint64_t two[4], inverse_two[4];
+    two[0] = two[1] = two[2] = 0x0; two[3] = 0x2;
+    memcpy(inverse_two, two, sizeof(uint64_t) * 4);
+    f_255_19_multiplicative_inverse(inverse_two);
+    if(inverse_two[0] != 0x3fffffffffffffff ||
+       inverse_two[1] != 0xffffffffffffffff ||
+       inverse_two[2] != 0xffffffffffffffff ||
+       inverse_two[3] != 0xfffffffffffffff7){
+      printf("EXPECTED: 0x3fffffffffffffff 0xffffffffffffffff "
+	     "0xffffffffffffffff 0xfffffffffffffff7\n");
+      printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
+	     inverse_two[0], inverse_two[1], inverse_two[2], inverse_two[3]);
+      printf("ERROR: Group F_255_19: Wrong multiplicative inverse of 2\n");
+      error = true;
+    }
+  }
+  if(!error){
+    f_255_19_multiplicative_inverse(inverse);
+    f_255_19_multiply(sample, inverse);
+    if(sample[0] != 0 || sample[1] != 0 || sample[2] != 0 || sample[3] != 1){
+      printf("%"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	     sample[0], sample[1], sample[2], sample[3]);
+      printf("ERROR: Group F_255_19: Wrong multiplicative inverse number\n");
+      error = true;
+    }
+  }
+  assert("Unit Test: 'f_255_19_multiplicative_inverse'", !error);
+}
+
+
 
 void test_f_255_19_multiply(void){
   bool error = false;
@@ -215,14 +264,9 @@ void test_f_255_19_multiply(void){
        biggest[3] != UINT64_C(0x1)){
       printf("ERROR: Group F_255_19: (-1)(-1) is not 1.\n");
       printf("EXPECTED: 0 0 0 1\n");
-      printf("FOUND:    %lx %lx %lx %lx\n", biggest[0], biggest[1],
-	     biggest[2], biggest[3]);
+      printf("FOUND:    %"PRIu64" %"PRIu64" %"PRIu64" %"PRIu64"\n",
+	     biggest[0], biggest[1], biggest[2], biggest[3]);
       error = true;
-      // 0x3fffffffffffffff.ffffffffffffffff.ffffffffffffffff.ffffffffffffffec.0000000000000000.0000000000000000.0000000000000000.0000000000000190
-      // is indeed the multiplication. The error is when normalizing
-      // Expected: begin in 0x190
-      // Add 0xfb (0x28b, não 1)
-      // Normalizing is wrong!
     }
   }
   assert("Unit Test: 'f_255_19_multiply'", !error);
@@ -252,6 +296,7 @@ int main(int argc, char **argv){
   test_f_255_19_add();
   test_f_255_19_additive_inverse();
   test_f_255_19_multiply();
+  test_f_255_19_multiplicative_inverse();
   //test_initialization();
   imprime_resultado();
   return 0;

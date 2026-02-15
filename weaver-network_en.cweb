@@ -628,7 +628,7 @@ void f_255_19_incomplete_multiply(uint64_t a[4], uint64_t b[4], uint64_t r[8]){
     }
   }
   for(i = 7; i >= 0; i --){ // Multiplication algorithm
-    memset(aux32, 0, sizeof(uint64_t) * 8);
+    memset(aux32, 0, sizeof(uint32_t) * 16);
     carry = 0;
     for(j = 7; j >= 0; j --){
       uint64_t result = ((uint64_t) a32[j]) * ((uint64_t) b32[i]) + carry;
@@ -660,6 +660,82 @@ void f_255_19_multiply(uint64_t a[4], uint64_t b[4]){ // a = a * b
   f_255_19_normalize2(aux, a);
 }
 @
+
+The next operation will be to compute the multiplicative inverse. That
+is, given the number $n$, determine the value of $n^{-1}$ such that:
+
+$$
+n\cdot n^{-1} = 1 \pmod{2^{255}-19}
+$$
+
+The safest way to compute this in constant time is by calculating
+$n^{2^{255}-21}$. Since the order of this group is $2^{255}-20$, it
+follows that modulo $2^{255}-19}$ we have $n^{-1} = n^{2^{255}-21}$.
+
+A well-known way to perform such an exponentiation is to compute
+successive values of the form $n^{2^i - 1}$, always trying, whenever
+possible, to approach the desired value through successive
+multiplications of a number by itself (i.e., squaring), and
+multiplying by previously computed terms to reach the final value. One
+way to do this using only 267 multiplications can be seen in the
+implementation below:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void f_255_19_multiplicative_inverse(uint64_t g[4]){ // g = 1/g
+  int i;
+  uint64_t t0[4], t1[4], t2[4], t3[4], t4[4], t5[4], t6[4], t7[4], z[4], g2[4];
+  memcpy(t0, g, sizeof(uint64_t) * 4);
+  f_255_19_multiply(t0, t0);
+  memcpy(g2, t0, sizeof(uint64_t) * 4); //g2 = g^2
+  f_255_19_multiply(t0, g); // t0 = g^(2^2 - 1) = g^3
+  memcpy(z, t0, sizeof(uint64_t) * 4);
+  f_255_19_multiply(z, z);
+  f_255_19_multiply(z, g); // z = g^7
+  memcpy(t1, z, sizeof(uint64_t) * 4);
+  for(i = 0; i < 2; i ++)
+    f_255_19_multiply(t1, t1);
+  f_255_19_multiply(t1, t0); // t1 = g^(2^5 - 1) = g^31
+  f_255_19_multiply(z, g2); // z = g^9
+  f_255_19_multiply(z, g2); // z = g^11
+  memcpy(t2, t1, sizeof(uint64_t) * 4);
+  for(i = 0; i < 5; i ++)
+    f_255_19_multiply(t2, t2);
+  f_255_19_multiply(t2, t1); // t2 = g^(2^10 - 1) = g^1023
+  memcpy(t3, t2, sizeof(uint64_t) * 4);
+  for(i = 0; i < 10; i ++)
+    f_255_19_multiply(t3, t3);
+  f_255_19_multiply(t3, t2); // t3 = g^(2^20 -1)
+  memcpy(t4, t3, sizeof(uint64_t) * 4);
+  for(i = 0; i < 20; i ++)
+    f_255_19_multiply(t4, t4);
+  f_255_19_multiply(t4, t3); // t4 = g^(2^40 -1)
+  for(i = 0; i < 10; i ++)
+    f_255_19_multiply(t4, t4);
+  f_255_19_multiply(t4, t2); // t4 = g^(2^50 -1)
+  memcpy(t5, t4, sizeof(uint64_t) * 4);
+  for(i = 0; i < 50; i ++)
+    f_255_19_multiply(t5, t5);
+  f_255_19_multiply(t5, t4); // t5 = g^(2^100 -1)
+  memcpy(t6, t5, sizeof(uint64_t) * 4);
+  for(i = 0; i < 100; i ++)
+    f_255_19_multiply(t6, t6);
+  f_255_19_multiply(t6, t5); // t6 = g^(2^200 -1)
+  memcpy(t7, t6, sizeof(uint64_t) * 4);
+  for(i = 0; i < 50; i ++)
+    f_255_19_multiply(t7, t7);
+  f_255_19_multiply(t7, t4); // t7 = g^(2^250 -1)
+  memcpy(g, t7, sizeof(uint64_t) * 4);
+  for(i = 0; i < 5; i ++)
+    f_255_19_multiply(g, g);
+  f_255_19_multiply(g, z); //  g = g^(2^255 -21)
+}
+@
+
+There are other methods. For example, in [BERNSTEIN, 2019] there is an
+algorithm that also runs in constant time and is a little faster, but
+much more complex. However, for our multiplicative group, we will
+choose to use the simpler method.
+
 
 
 

@@ -246,7 +246,7 @@ b32[i+1]= tmp;
 }
 }
 for(i= 7;i>=0;i--){
-memset(aux32,0,sizeof(uint64_t)*8);
+memset(aux32,0,sizeof(uint32_t)*16);
 carry= 0;
 for(j= 7;j>=0;j--){
 uint64_t result= ((uint64_t)a32[j])*((uint64_t)b32[i])+carry;
@@ -273,7 +273,58 @@ uint64_t aux[8];
 f_255_19_incomplete_multiply(a,b,aux);
 f_255_19_normalize2(aux,a);
 }
-/*:19*/
+/*:19*//*20:*/
+#line 683 "weaver-network_en.cweb"
+
+void f_255_19_multiplicative_inverse(uint64_t g[4]){
+int i;
+uint64_t t0[4],t1[4],t2[4],t3[4],t4[4],t5[4],t6[4],t7[4],z[4],g2[4];
+memcpy(t0,g,sizeof(uint64_t)*4);
+f_255_19_multiply(t0,t0);
+memcpy(g2,t0,sizeof(uint64_t)*4);
+f_255_19_multiply(t0,g);
+memcpy(z,t0,sizeof(uint64_t)*4);
+f_255_19_multiply(z,z);
+f_255_19_multiply(z,g);
+memcpy(t1,z,sizeof(uint64_t)*4);
+for(i= 0;i<2;i++)
+f_255_19_multiply(t1,t1);
+f_255_19_multiply(t1,t0);
+f_255_19_multiply(z,g2);
+f_255_19_multiply(z,g2);
+memcpy(t2,t1,sizeof(uint64_t)*4);
+for(i= 0;i<5;i++)
+f_255_19_multiply(t2,t2);
+f_255_19_multiply(t2,t1);
+memcpy(t3,t2,sizeof(uint64_t)*4);
+for(i= 0;i<10;i++)
+f_255_19_multiply(t3,t3);
+f_255_19_multiply(t3,t2);
+memcpy(t4,t3,sizeof(uint64_t)*4);
+for(i= 0;i<20;i++)
+f_255_19_multiply(t4,t4);
+f_255_19_multiply(t4,t3);
+for(i= 0;i<10;i++)
+f_255_19_multiply(t4,t4);
+f_255_19_multiply(t4,t2);
+memcpy(t5,t4,sizeof(uint64_t)*4);
+for(i= 0;i<50;i++)
+f_255_19_multiply(t5,t5);
+f_255_19_multiply(t5,t4);
+memcpy(t6,t5,sizeof(uint64_t)*4);
+for(i= 0;i<100;i++)
+f_255_19_multiply(t6,t6);
+f_255_19_multiply(t6,t5);
+memcpy(t7,t6,sizeof(uint64_t)*4);
+for(i= 0;i<50;i++)
+f_255_19_multiply(t7,t7);
+f_255_19_multiply(t7,t4);
+memcpy(g,t7,sizeof(uint64_t)*4);
+for(i= 0;i<5;i++)
+f_255_19_multiply(g,g);
+f_255_19_multiply(g,z);
+}
+/*:20*/
 #line 158 "weaver-network_en.cweb"
 
 /*9:*/
