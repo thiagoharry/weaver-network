@@ -272,6 +272,80 @@ void test_f_255_19_multiply(void){
   assert("Unit Test: 'f_255_19_multiply'", !error);
 }
 
+void test_curve25519_double(void){
+  bool error = false;
+  // Test 1: Infinity point
+  uint64_t inf_x[4], inf_z[4];
+  inf_x[0] = inf_x[1] = inf_x[2] = 0x0; inf_x[3] = 0x1;
+  inf_z[0] = inf_z[1] = inf_z[2] = inf_z[3] = 0x0;
+  curve25519_double(inf_x, inf_z);
+  if(inf_z[0] != UINT64_C(0x0) || inf_z[1] != UINT64_C(0x0) ||
+     inf_z[2] != UINT64_C(0x0) || inf_z[3] != UINT64_C(0x0)){
+    printf("ERROR: Curve25519: 0+0 not equal 0.\n");
+    error = true;
+  }
+  if(!error){
+    uint64_t nine_x[4], nine_z[4];
+    nine_x[0] = nine_x[1] = nine_x[2] = 0x0; nine_x[3] = 0x9;
+    nine_z[0] = nine_z[1] = nine_z[2] = 0x0; nine_z[3] = 0x1;
+    curve25519_double(nine_x, nine_z);
+    f_255_19_multiplicative_inverse(nine_z);
+    f_255_19_multiply(nine_x, nine_z);
+    if(nine_x[0] != UINT64_C(0x20d342d51873f1b7) ||
+       nine_x[1] != UINT64_C(0xd9750c687d157114) ||
+       nine_x[2] != UINT64_C(0x8f3f5ced1e350b5c) ||
+       nine_x[3] != UINT64_C(0x5cae469cdd684efb)){
+      printf("ERROR: Curve25519: P+P with wrong value.\n");
+      printf("EXPECTED: 0x20d342d51873f1b7 0xd9750c687d157114"
+	     " 0x8f3f5ced1e350b5c 0x5cae469cdd684efb\n");
+      printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
+	     nine_x[0], nine_x[1], nine_x[2], nine_x[3]);
+      error = true;
+    }
+  }
+  if(!error){
+    uint64_t nine_x[4], nine_z[4];
+    nine_x[0] = nine_x[1] = nine_x[2] = 0x0; nine_x[3] = 0x9;
+    nine_z[0] = nine_z[1] = nine_z[2] = 0x0; nine_z[3] = 0x1;
+    curve25519_double(nine_x, nine_z);
+    curve25519_double(nine_x, nine_z);
+    f_255_19_multiplicative_inverse(nine_z);
+    f_255_19_multiply(nine_x, nine_z);
+       
+    if(nine_x[0] != UINT64_C(0x79ce98b7e0689d7d) ||
+       nine_x[1] != UINT64_C(0xe7d1d074a15b315f) ||
+       nine_x[2] != UINT64_C(0xfe1805dfcd5d2a23) ||
+       nine_x[3] != UINT64_C(0x0fee85e4550013ef)){
+      printf("ERROR: Curve25519: P+P with wrong value.\n");
+      printf("EXPECTED: 0x79ce98b7e0689d7d e7d1d074a15b315f"
+	     " 0xfe1805dfcd5d2a23 0x0fee85e4550013ef\n");
+      printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
+	     nine_x[0], nine_x[1], nine_x[2], nine_x[3]);
+      error = true;
+    }
+  }
+  if(!error){
+    uint64_t nine_x[4], nine_z[4];
+    nine_x[0] = nine_x[1] = nine_x[2] = 0x0; nine_x[3] = 45;
+    nine_z[0] = nine_z[1] = nine_z[2] = 0x0; nine_z[3] = 5;
+    curve25519_double(nine_x, nine_z);
+    curve25519_double(nine_x, nine_z);
+    f_255_19_multiplicative_inverse(nine_z);
+    f_255_19_multiply(nine_x, nine_z);
+    if(nine_x[0] != UINT64_C(0x79ce98b7e0689d7d) ||
+       nine_x[1] != UINT64_C(0xe7d1d074a15b315f) ||
+       nine_x[2] != UINT64_C(0xfe1805dfcd5d2a23) ||
+       nine_x[3] != UINT64_C(0x0fee85e4550013ef)){
+      printf("ERROR: Curve25519: P+P with inconsistent projection.\n");
+      printf("EXPECTED: 0x79ce98b7e0689d7d e7d1d074a15b315f"
+	     " 0xfe1805dfcd5d2a23 0x0fee85e4550013ef\n");
+      printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
+	     nine_x[0], nine_x[1], nine_x[2], nine_x[3]);
+      error = true;
+    }
+  }
+  assert("Unit Test: 'curve25519_double'", !error);
+}
 
 /*void test_initialization(void){
   struct connection *c;
@@ -297,6 +371,7 @@ int main(int argc, char **argv){
   test_f_255_19_additive_inverse();
   test_f_255_19_multiply();
   test_f_255_19_multiplicative_inverse();
+  test_curve25519_double();
   //test_initialization();
   imprime_resultado();
   return 0;

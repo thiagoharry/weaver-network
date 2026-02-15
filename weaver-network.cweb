@@ -779,6 +779,82 @@ algoritmo que também roda em tempo constante e é um pouco mais rápido,
 mas requer operações bem mais complicadas. Mas para o nosso grupo
 multiplicativo, vamos optar por usar o método mais simples.
 
+\subsecao{A Curva Elíptica Curve25519}
+
+Dado o corpo finito apresentado na seção anterior, podemos construir
+uma curva elíptica definida por $y^2=x^3+486662x^2+x$. Onde os valores
+dos pares $(x,y)$ não são números reais, mas elementos do corpo finito
+apresentado.
+
+Com ajuda desta curva, podemos definir um grupo matemático formado por
+pontos da curva e mais um ponto adicional chamado de ``ponto no
+infinito''. A operação de adição no grupo (A+B) é definida como sendo
+igual ao um terceiro ponto (C) da curva que é interceptada pela reta
+que passa por A e B. O ponto no infinito é definido como o elemento
+neutro desta adição. O inverso aditivo de um ponto da curva $(a,b)$ é
+igual a $(a, -b)$ (pois a curva é simétrica no eixo $x$). E a soma de
+um ponto com ele mesmo é igual ao segundo ponto da curva cruzado pela
+reta tangente que passa por ele mesmo.
+
+Embora as operações deste grupo sejam definidas geometricamente, e
+possam ser visualizadas geometricamente se definirmos esta curva no
+plano cartesiano, na verdade estaremos usando ela não no plano real,
+mas no plano do corpo finito de inteiros módulo $2^{255}-19$. Então as
+transformações feitas, mesmo seguindo a mesma lógica, não podem ser
+visualizadas graficamente.
+
+Tecnicamente, para representar um ponto na curva, precisamos de dois
+valores: a coordenada $x$ e a coordenada $y$. Entretanto, a curva que
+usaremos é um tipo especial de cuurva chamada de ``Curva de
+Montgomery''. Que é qualquer curva na forma $By^2=x^3+Ax^2+x$ tal que
+$B(A^2-4)\neq 0$. Neste tipo de curva, podemos obter um desempenho
+melhor e evitar ter que armazernar o valor no $y$ de cada ponto ao
+realizar todas as operações geométricas em uma projeção que não
+diferencia entre $A+B$, $A-B$ e $B-A$ ao fazermos as operações de
+grupo.
+
+Usando tal truque, cada ponto pode ser armazenado e gerado como sendo
+formado somente por um valor $x$, ignorando a coordenada
+$y$. Entretanto, os algoritmos os representam como dois valores: $(x:
+z)$. O valor $z$ é sempre 0 para o ponto no infinito e começa valendo
+1 para outros valores. De certa forma, ele pode ser visto como uma
+representação em fração do nosso ponto, com o valor de $z$ sendo um
+denominador que acumulará valores e será ``simplificado'' e removido
+somente uma só vez no final como forma de ter que calcular somente uma
+vez o inverso multiplicativo (a operação mais cara computacionalmente
+no corpo finito).
+
+Usando fórmulas e tal método, podemos calcular o dobro de um ponto na
+curva $P+P$ (onde $P=(x:z)$) usando a função abaixo:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void curve25519_double(uint64_t x[4], uint64_t z[4]){ // P = P+P
+  uint64_t a[4], b[4], e[4], constant[4];
+  constant[0] = constant[1] = constant[2] = 0x0;
+  constant[3] = 121666;
+  memcpy(a, x, sizeof(uint64_t) * 4);
+  f_255_19_add(a, z);
+  f_255_19_multiply(a, a);
+  memcpy(b, z, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(b);
+  f_255_19_add(b, x);
+  f_255_19_multiply(b, b);
+  memcpy(e, b, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(e);
+  f_255_19_add(e, a);
+  memcpy(x, a, sizeof(uint64_t) * 4);
+  f_255_19_multiply(x, b);
+  z[0] = z[1] = z[2] = 0x0; z[3] = 121666;
+  f_255_19_multiply(z, e);
+  f_255_19_add(z, b);
+  f_255_19_multiply(z, e);
+}
+@
+
+Para calcular o verdadeiro valor da coordenada $x$ do resultado, é
+preciso computar $x\cdot z^{-1}$. Mas esta operação final deve ser
+adiada o máximo possível para ser feita somente no fim das operações
+com os pontos da curva. Portanto, a função acima não a realiza.
 
 \secao{Referências}
 

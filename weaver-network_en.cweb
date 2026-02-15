@@ -736,7 +736,81 @@ algorithm that also runs in constant time and is a little faster, but
 much more complex. However, for our multiplicative group, we will
 choose to use the simpler method.
 
+\subsecao{The Elliptic Curve ``Curve25519''}
 
+Given the finite field presented in the previous section, we can
+construct an elliptic curve defined by $y^2 = x^3 + 486662x^2 +
+x$. The values of the pairs $(x,y)$ are not real numbers, but elements
+of the finite field presented.
 
+With the help of this curve, we can define a mathematical group formed
+by the points on the curve together with an additional point called
+the ``point at infinity.'' The addition operation in the group (A+B)
+is defined as being equal to a third point (C) on the curve that is
+intersected by the line passing through A and B. The point at infinity
+is defined as the identity element of this addition. The additive
+inverse of a point on the curve $(a,b)$ is equal to $(a,-b)$ (since
+the curve is symmetric with respect to the $x$-axis). And the sum of a
+point with itself is equal to the second point on the curve
+intersected by the tangent line passing through that same point.
+
+Although the operations of this group are defined geometrically, and
+can be visualized geometrically if we define this curve on the
+Cartesian plane, in practice we will use it not over the real plane,
+but over the plane of the finite field of integers modulo
+$2^{255}-19$. Therefore, the transformations performed, even though
+they follow the same logic, cannot be visualized graphically.
+
+Technically, to represent a point on the curve, we need two values:
+the $x$ coordinate and the $y$ coordinate. However, the curve we will
+use is a special type of curve called a ``Montgomery curve.''  It is
+any curve of the form $By^2 = x^3 + Ax^2 + x$ such that $B(A^2 - 4)
+\neq 0$. In this type of curve, we can achieve better performance and
+avoid having to store the $y$ value of each point by performing all
+geometric operations in a projection that does not distinguish between
+$A+B$, $A-B$, and $B-A$ when carrying out the group operations.
+
+Using this trick, each point can be stored and generated as being
+formed only by an $x$ value, ignoring the $y$ coordinate. However, the
+algorithms represent them as two values: $(x:z)$. The value $z$ is
+always 0 for the point at infinity and starts as 1 for other values.
+In a sense, it can be viewed as a fractional representation of our
+point, with the value of $z$ acting as a denominator that accumulates
+values and is ``reduced'' and removed only once at the end, as a
+way to compute the multiplicative inverse (the most computationally
+expensive operation in the finite field) only a single time.
+
+Using formulas and this method, we can compute the doubling of a point
+on the curve $P+P$ (where $P = (x:z)$) using the function below:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void curve25519_double(uint64_t x[4], uint64_t z[4]){ // P = P+P
+  uint64_t a[4], b[4], e[4], constant[4];
+  constant[0] = constant[1] = constant[2] = 0x0;
+  constant[3] = 121666;
+  memcpy(a, x, sizeof(uint64_t) * 4);
+  f_255_19_add(a, z);
+  f_255_19_multiply(a, a);
+  memcpy(b, z, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(b);
+  f_255_19_add(b, x);
+  f_255_19_multiply(b, b);
+  memcpy(e, b, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(e);
+  f_255_19_add(e, a);
+  memcpy(x, a, sizeof(uint64_t) * 4);
+  f_255_19_multiply(x, b);
+  z[0] = z[1] = z[2] = 0x0; z[3] = 121666;
+  f_255_19_multiply(z, e);
+  f_255_19_add(z, b);
+  f_255_19_multiply(z, e);
+}
+@
+
+To compute the actual value of the $x$ coordinate of the result, it is
+necessary to compute $x \cdot z^{-1}$. However, this final operation
+should be postponed as much as possible and performed only at the end
+of the operations involving the points on the curve. Therefore, the
+function above does not perform it.
 
 \fim

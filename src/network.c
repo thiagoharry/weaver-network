@@ -1,24 +1,24 @@
 /*4:*/
-#line 146 "weaver-network_en.cweb"
+#line 158 "weaver-network.cweb"
 
 #include "network.h"
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h> 
 #endif
-#line 151 "weaver-network_en.cweb"
+#line 163 "weaver-network.cweb"
 #include <stdbool.h>  
 #include <string.h>   
 #include <unistd.h>   
 /*5:*/
-#line 173 "weaver-network_en.cweb"
+#line 185 "weaver-network.cweb"
 
 #if defined(_WIN32)
 #include <winsock2.h> 
 #pragma comment(lib,"wsock32.lib")
 #endif
-#line 178 "weaver-network_en.cweb"
+#line 190 "weaver-network.cweb"
 /*:5*//*6:*/
-#line 185 "weaver-network_en.cweb"
+#line 196 "weaver-network.cweb"
 
 #if defined(__unix__)
 #include <sys/socket.h> 
@@ -27,18 +27,18 @@
 #include <netdb.h> 
 #include <fcntl.h> 
 #endif
-#line 193 "weaver-network_en.cweb"
+#line 204 "weaver-network.cweb"
 /*:6*//*7:*/
-#line 207 "weaver-network_en.cweb"
+#line 219 "weaver-network.cweb"
 
 #include <stdlib.h>  
 /*:7*/
-#line 154 "weaver-network_en.cweb"
+#line 166 "weaver-network.cweb"
 
 
 
 /*8:*/
-#line 211 "weaver-network_en.cweb"
+#line 223 "weaver-network.cweb"
 
 
 
@@ -47,10 +47,10 @@ static void*(*temporary_alloc)(size_t)= malloc;
 static void(*permanent_free)(void*)= free;
 static void(*temporary_free)(void*)= free;
 /*:8*/
-#line 157 "weaver-network_en.cweb"
+#line 169 "weaver-network.cweb"
 
 /*11:*/
-#line 285 "weaver-network_en.cweb"
+#line 321 "weaver-network.cweb"
 
 #define ADDRESS_TYPE_INVALID -1
 #define ADDRESS_TYPE_IPV4     1
@@ -106,7 +106,7 @@ else
 return ADDRESS_TYPE_DOMAIN;
 }
 /*:11*//*12:*/
-#line 370 "weaver-network_en.cweb"
+#line 407 "weaver-network.cweb"
 
 int connect_socket(char*address,char*port,int type){
 struct addrinfo hints;
@@ -132,9 +132,9 @@ return-1;
 return sfd;
 }
 /*:12*//*13:*/
-#line 447 "weaver-network_en.cweb"
+#line 486 "weaver-network.cweb"
 
-void f_255_19_incomplete_add(uint64_t destiny[4],uint64_t sum[4],int size){
+void f_255_19_incomplete_add(uint64_t*destiny,uint64_t*sum,int size){
 int i;
 uint64_t initial_value;
 int carry= 0;
@@ -146,7 +146,7 @@ carry+= ((destiny[i]==initial_value)*(sum[i]!=0));
 }
 }
 /*:13*//*14:*/
-#line 489 "weaver-network_en.cweb"
+#line 529 "weaver-network.cweb"
 
 void f_255_19_normalize(uint64_t n[4]){
 int still_big;
@@ -158,22 +158,22 @@ nineteen[3]= 0x0;
 nineteen[3]= 19*((n[0]&0x8000000000000000)==0x8000000000000000);
 n[0]= (n[0]&0x7fffffffffffffff);
 f_255_19_incomplete_add(n,nineteen,4);
-still_big= (n[0]==0x7fffffffffffffff)*(n[1]==~0x0)*
-(n[2]==~0x0)*(n[3]> 0xffffffffffffffec);
+still_big= ((n[0]==0x7fffffffffffffff)*(n[1]==~0x0)*
+(n[2]==~0x0)*(n[3]> 0xffffffffffffffec));
 n[0]-= n[0]*still_big;
 n[1]-= n[1]*still_big;
 n[2]-= n[2]*still_big;
 n[3]-= 0xffffffffffffffed*still_big;
 }
 /*:14*//*15:*/
-#line 523 "weaver-network_en.cweb"
+#line 563 "weaver-network.cweb"
 
 void f_255_19_add(uint64_t a[4],uint64_t b[4]){
 f_255_19_incomplete_add(a,b,4);
 f_255_19_normalize(a);
 }
 /*:15*//*16:*/
-#line 535 "weaver-network_en.cweb"
+#line 575 "weaver-network.cweb"
 
 void f_255_19_additive_inverse(uint64_t n[4]){
 uint64_t biggest[4],one[4],initial;
@@ -193,7 +193,7 @@ carry= (n[i]==biggest[i])*(initial!=0);
 f_255_19_add(n,one);
 }
 /*:16*//*17:*/
-#line 575 "weaver-network_en.cweb"
+#line 616 "weaver-network.cweb"
 
 void f_255_19_normalize2(uint64_t src[8],uint64_t dst[4]){
 
@@ -224,7 +224,7 @@ f_255_19_add(dst,aux);
 }
 }
 /*:17*//*18:*/
-#line 610 "weaver-network_en.cweb"
+#line 652 "weaver-network.cweb"
 
 void f_255_19_incomplete_multiply(uint64_t a[4],uint64_t b[4],uint64_t r[8]){
 bool little_endian= true;
@@ -266,7 +266,7 @@ f_255_19_incomplete_add(r,aux,8);
 }
 }
 /*:18*//*19:*/
-#line 656 "weaver-network_en.cweb"
+#line 699 "weaver-network.cweb"
 
 void f_255_19_multiply(uint64_t a[4],uint64_t b[4]){
 uint64_t aux[8];
@@ -274,7 +274,7 @@ f_255_19_incomplete_multiply(a,b,aux);
 f_255_19_normalize2(aux,a);
 }
 /*:19*//*20:*/
-#line 683 "weaver-network_en.cweb"
+#line 726 "weaver-network.cweb"
 
 void f_255_19_multiplicative_inverse(uint64_t g[4]){
 int i;
@@ -324,11 +324,36 @@ for(i= 0;i<5;i++)
 f_255_19_multiply(g,g);
 f_255_19_multiply(g,z);
 }
-/*:20*/
-#line 158 "weaver-network_en.cweb"
+/*:20*//*21:*/
+#line 830 "weaver-network.cweb"
+
+void curve25519_double(uint64_t x[4],uint64_t z[4]){
+uint64_t a[4],b[4],e[4],constant[4];
+constant[0]= constant[1]= constant[2]= 0x0;
+constant[3]= 121666;
+memcpy(a,x,sizeof(uint64_t)*4);
+f_255_19_add(a,z);
+f_255_19_multiply(a,a);
+memcpy(b,z,sizeof(uint64_t)*4);
+f_255_19_additive_inverse(b);
+f_255_19_add(b,x);
+f_255_19_multiply(b,b);
+memcpy(e,b,sizeof(uint64_t)*4);
+f_255_19_additive_inverse(e);
+f_255_19_add(e,a);
+memcpy(x,a,sizeof(uint64_t)*4);
+f_255_19_multiply(x,b);
+z[0]= z[1]= z[2]= 0x0;z[3]= 121666;
+f_255_19_multiply(z,e);
+f_255_19_add(z,b);
+f_255_19_multiply(z,e);
+}
+/*:21*/
+#line 170 "weaver-network.cweb"
 
 /*9:*/
-#line 220 "weaver-network_en.cweb"
+#line 232 "weaver-network.cweb"
+
 
 void _Winit_network(void*(*p_alloc)(size_t),void(*p_free)(void*),
 void*(*t_alloc)(size_t),void(*t_free)(void*)){
@@ -340,21 +365,21 @@ temporary_free= t_free;
 WSADATA WsaData;
 WSAStartup(MAKEWORD(2,2),&WsaData);
 #endif
-#line 231 "weaver-network_en.cweb"
+#line 244 "weaver-network.cweb"
 
 return;
 }
 /*:9*//*10:*/
-#line 239 "weaver-network_en.cweb"
+#line 252 "weaver-network.cweb"
 
 void _Wfinish_network(void){
 #if defined(_WIN32) 
 WSACleanup();
 #endif
-#line 244 "weaver-network_en.cweb"
+#line 257 "weaver-network.cweb"
  return;
 }
 /*:10*/
-#line 159 "weaver-network_en.cweb"
+#line 171 "weaver-network.cweb"
 
 /*:4*/
