@@ -348,7 +348,38 @@ f_255_19_multiply(z,e);
 f_255_19_add(z,b);
 f_255_19_multiply(z,e);
 }
-/*:21*/
+/*:21*//*22:*/
+#line 872 "weaver-network.cweb"
+
+void curve25519_add(uint64_t x1[4],uint64_t z1[4],
+uint64_t x2[4],uint64_t z2[4],
+uint64_t xb[4],uint64_t zb[4]){
+uint64_t a[4],b[4],c[4],d[4],x[4],z[4];
+memcpy(a,x1,sizeof(uint64_t)*4);
+f_255_19_add(a,z1);
+memcpy(b,z1,sizeof(uint64_t)*4);
+f_255_19_additive_inverse(b);
+f_255_19_add(b,x1);
+memcpy(c,x2,sizeof(uint64_t)*4);
+f_255_19_add(c,z2);
+memcpy(d,z2,sizeof(uint64_t)*4);
+f_255_19_additive_inverse(d);
+f_255_19_add(d,x2);
+f_255_19_multiply(d,a);
+f_255_19_multiply(c,b);
+memcpy(x,d,sizeof(uint64_t)*4);
+f_255_19_add(x,c);
+f_255_19_multiply(x,x);
+f_255_19_multiply(x,zb);
+memcpy(z,c,sizeof(uint64_t)*4);
+f_255_19_additive_inverse(z);
+f_255_19_add(z,d);
+f_255_19_multiply(z,z);
+f_255_19_multiply(z,xb);
+memcpy(x1,x,sizeof(uint64_t)*4);
+memcpy(z1,z,sizeof(uint64_t)*4);
+}
+/*:22*/
 #line 170 "weaver-network.cweb"
 
 /*9:*/

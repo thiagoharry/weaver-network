@@ -856,6 +856,50 @@ preciso computar $x\cdot z^{-1}$. Mas esta operação final deve ser
 adiada o máximo possível para ser feita somente no fim das operações
 com os pontos da curva. Portanto, a função acima não a realiza.
 
+Já para calcular a soma de dois pontos $P=(x_1: z_1)$ e $Q=(x_2:
+z_2)$, isso é impossível de ser feito sem levar em conta as
+coordenadas $y$ dos pontos, exceto em um caso especial: se queremos
+calcular $P+Q$, mas sabemos qual é a coordenada $x$ de $P-Q$, então
+podemos usar este conhecimento para somar os pontos sem precisar
+consultar $y$ (chamamos isso de soma diferencial). Para somarmos dois
+pontos desta forma, usamos a função abaixo que recebe como dois
+primeiros parâmetros os operandos $P = (x_1: z_1)$ e $Q=(x_2: z_2)$ da
+soma (o primeiro operando será sobrescrito com a resposta) e tem como
+terceiro parâmetro o ponto correspondente a $P-Q$. A função abaixo só
+gera o resultado correto para $P\neq Q$ e quando ambos não são o ponto
+no infinito.
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void curve25519_add(uint64_t x1[4], uint64_t z1[4],
+                    uint64_t x2[4], uint64_t z2[4],
+		    uint64_t xb[4], uint64_t zb[4]){ // P = P+Q
+  uint64_t a[4], b[4], c[4], d[4], x[4], z[4];
+  memcpy(a, x1, sizeof(uint64_t) * 4);
+  f_255_19_add(a, z1); // a = x1+z1
+  memcpy(b, z1, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(b);
+  f_255_19_add(b, x1); // b = x1-z1
+  memcpy(c, x2, sizeof(uint64_t) * 4);
+  f_255_19_add(c, z2); // c = x2+z2
+  memcpy(d, z2, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(d);
+  f_255_19_add(d, x2); // d = x2-z2
+  f_255_19_multiply(d, a); // d = d*a = (x2-z2)(x1+z1)
+  f_255_19_multiply(c, b); // c = c*b = (x2+z2)(x1-z1)
+  memcpy(x, d, sizeof(uint64_t) * 4);
+  f_255_19_add(x, c);
+  f_255_19_multiply(x, x);
+  f_255_19_multiply(x, zb); //x = zb*(d*a+c*b)^2
+  memcpy(z, c, sizeof(uint64_t) * 4);
+  f_255_19_additive_inverse(z);
+  f_255_19_add(z, d);
+  f_255_19_multiply(z, z);
+  f_255_19_multiply(z, xb); //z = xb*(d*a-c*b)^2
+  memcpy(x1, x, sizeof(uint64_t) * 4);
+  memcpy(z1, z, sizeof(uint64_t) * 4);
+}
+@
+
 \secao{Referências}
 
 \referencia{Bernstein, D. J., Yang B.-Y. (2019) ``Fast Constant Time
