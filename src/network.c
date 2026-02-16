@@ -349,7 +349,7 @@ f_255_19_add(z,b);
 f_255_19_multiply(z,e);
 }
 /*:21*//*22:*/
-#line 872 "weaver-network.cweb"
+#line 871 "weaver-network.cweb"
 
 void curve25519_add(uint64_t x1[4],uint64_t z1[4],
 uint64_t x2[4],uint64_t z2[4],

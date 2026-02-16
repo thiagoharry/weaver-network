@@ -825,8 +825,7 @@ as its first two parameters the operands $P = (x_1: z_1)$ and $Q=(x_2:
 z_2)$ of the sum (the first operand will be overwritten with the
 result), and as its third parameter the point corresponding to $P-Q$.
 
-The function below only produces the correct result for $P \neq Q$ and
-when neither point is the point at infinity.
+The function below only produces the correct result for $P \neq Q$.
 
 @<Auxiliary Local Functions (network.c)@>+=
 void curve25519_add(uint64_t x1[4], uint64_t z1[4],

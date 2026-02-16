@@ -350,35 +350,59 @@ void test_curve25519_double(void){
 void test_curve25519_add(void){
   bool error = false;
   uint64_t x1[4], z1[4], x2[4], z2[4], x3[4], z3[4];
-  // 0x0f580b4177e2c37f.831226edd7270db2.7514a6b3a2d31848.0f7650f75149badd
   x1[0] = 0x0f580b4177e2c37f; z1[0] = 0x0;
   x1[1] = 0x831226edd7270db2; z1[1] = 0x0;
   x1[2] = 0x7514a6b3a2d31848; z1[2] = 0x0;
   x1[3] = 0x0f7650f75149badd; z1[3] = 0x1;
-  // 0x7b6432b138bc13de.a68f3d22a8cee56e.c803fca707c3bb95.059cf1dec5932453
-  x2[0] = 0x7b6432b138bc13de; z2[0] = 0x0;
-  x2[1] = 0xa68f3d22a8cee56e; z2[1] = 0x0;
-  x2[2] = 0xc803fca707c3bb95; z2[2] = 0x0;
-  x2[3] = 0x059cf1dec5932453; z2[3] = 0x1;
-  // 0x22835a4b30e7ee30.e5912d70a8d6efb6.0b56a03c04ad2299.99187f7bc2255858
-  x3[0] = 0x22835a4b30e7ee30; z3[0] = 0x0;
-  x3[1] = 0xe5912d70a8d6efb6; z3[1] = 0x0;
-  x3[2] = 0x0b56a03c04ad2299; z3[2] = 0x0;
-  x3[3] = 0x99187f7bc2255858; z3[3] = 0x1;
-
+  x2[0] = 0x0; z2[0] = 0x0;
+  x2[1] = 0x0; z2[1] = 0x0;
+  x2[2] = 0x0; z2[2] = 0x0;
+  x2[3] = 0x1; z2[3] = 0x0;
+  x3[0] = 0x0f580b4177e2c37f; z3[0] = 0x0;
+  x3[1] = 0x831226edd7270db2; z3[1] = 0x0;
+  x3[2] = 0x7514a6b3a2d31848; z3[2] = 0x0;
+  x3[3] = 0x0f7650f75149badd; z3[3] = 0x1;
   curve25519_add(x1, z1, x2, z2, x3, z3);
   f_255_19_multiplicative_inverse(z1);
   f_255_19_multiply(x1, z1);
-
-  if(x1[0] != UINT64_C(0x3178d08461f18c88) ||
-     x1[1] != UINT64_C(0xe01d27b3acfd7990) ||
-     x1[2] != UINT64_C(0xac8ab8a270d31dbf) ||
-     x1[3] != UINT64_C(0x5bca11b4e194cbf1)){
-    printf("ERROR: Curve25519: P+Q with wrong result.\n");
-    printf("Expected: 0x3178d08461f18c88 0xe01d27b3acfd7990 0xac8ab8a270d31dbf 0x5bca11b4e194cbf1\n");
-    printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
-	   x1[0], x1[1], x1[2], x1[3]);
+  if(x1[0] != UINT64_C(0x0f580b4177e2c37f) ||
+     x1[1] != UINT64_C(0x831226edd7270db2) ||
+     x1[2] != UINT64_C(0x7514a6b3a2d31848) ||
+     x1[3] != UINT64_C(0x0f7650f75149badd)){
+    printf("ERROR: Curve25519: P+0 not equal P.\n");
     error = true;
+  }
+  if(!error){
+    // 0x0f580b4177e2c37f.831226edd7270db2.7514a6b3a2d31848.0f7650f75149badd
+    x1[0] = 0x0f580b4177e2c37f; z1[0] = 0x0;
+    x1[1] = 0x831226edd7270db2; z1[1] = 0x0;
+    x1[2] = 0x7514a6b3a2d31848; z1[2] = 0x0;
+    x1[3] = 0x0f7650f75149badd; z1[3] = 0x1;
+    // 0x7b6432b138bc13de.a68f3d22a8cee56e.c803fca707c3bb95.059cf1dec5932453
+    x2[0] = 0x7b6432b138bc13de; z2[0] = 0x0;
+    x2[1] = 0xa68f3d22a8cee56e; z2[1] = 0x0;
+    x2[2] = 0xc803fca707c3bb95; z2[2] = 0x0;
+    x2[3] = 0x059cf1dec5932453; z2[3] = 0x1;
+    // 0x22835a4b30e7ee30.e5912d70a8d6efb6.0b56a03c04ad2299.99187f7bc2255858
+    x3[0] = 0x22835a4b30e7ee30; z3[0] = 0x0;
+    x3[1] = 0xe5912d70a8d6efb6; z3[1] = 0x0;
+    x3[2] = 0x0b56a03c04ad2299; z3[2] = 0x0;
+    x3[3] = 0x99187f7bc2255858; z3[3] = 0x1;
+    
+    curve25519_add(x1, z1, x2, z2, x3, z3);
+    f_255_19_multiplicative_inverse(z1);
+    f_255_19_multiply(x1, z1);
+
+    if(x1[0] != UINT64_C(0x3178d08461f18c88) ||
+       x1[1] != UINT64_C(0xe01d27b3acfd7990) ||
+       x1[2] != UINT64_C(0xac8ab8a270d31dbf) ||
+       x1[3] != UINT64_C(0x5bca11b4e194cbf1)){
+      printf("ERROR: Curve25519: P+Q with wrong result.\n");
+      printf("Expected: 0x3178d08461f18c88 0xe01d27b3acfd7990 0xac8ab8a270d31dbf 0x5bca11b4e194cbf1\n");
+      printf("FOUND:    0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64" 0x%"PRIx64"\n",
+	     x1[0], x1[1], x1[2], x1[3]);
+      error = true;
+    }
   }
   assert("Unit Test: 'curve25519_add'", !error);
 }

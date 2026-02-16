@@ -866,8 +866,7 @@ pontos desta forma, usamos a função abaixo que recebe como dois
 primeiros parâmetros os operandos $P = (x_1: z_1)$ e $Q=(x_2: z_2)$ da
 soma (o primeiro operando será sobrescrito com a resposta) e tem como
 terceiro parâmetro o ponto correspondente a $P-Q$. A função abaixo só
-gera o resultado correto para $P\neq Q$ e quando ambos não são o ponto
-no infinito.
+gera o resultado correto quando $P\neq Q$.
 
 @<Funções Auxiliares Locais (network.c)@>+=
 void curve25519_add(uint64_t x1[4], uint64_t z1[4],
