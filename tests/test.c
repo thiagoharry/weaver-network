@@ -407,6 +407,68 @@ void test_curve25519_add(void){
   assert("Unit Test: 'curve25519_add'", !error);
 }
 
+void test_curve25519_mult(void){
+  bool error = false;
+  uint64_t x[4], z[4], exp[4];
+  exp[0] = 0x0;
+  exp[1] = 0x0;
+  exp[2] = 0x0;
+  exp[3] = 0x0;
+  x[0] = 0x4e97512a574d8906;
+  x[1] = 0xc60032886fea49f9;
+  x[2] = 0x513f890e8e8ac977;
+  x[3] = 0x26a201c7f064d21f;
+  z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+  curve25519_mult(x, z, exp);
+  if(z[0] != 0x0 || z[1] != 0x0 || z[2] != 0x0 || z[3] != 0x0){
+    printf("ERROR: Curve25519: 0*P not equal 0.\n");
+    error = true;
+  }
+  if(!error){
+    exp[0] = 0x0;
+    exp[1] = 0x0;
+    exp[2] = 0x0;
+    exp[3] = 0x1;
+    x[0] = 0x4e97512a574d8906;
+    x[1] = 0xc60032886fea49f9;
+    x[2] = 0x513f890e8e8ac977;
+    x[3] = 0x26a201c7f064d21f;
+    z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+    curve25519_mult(x, z, exp);
+    f_255_19_multiplicative_inverse(z);
+    f_255_19_multiply(x, z);
+    if(x[0] != UINT64_C(0x4e97512a574d8906) ||
+       x[1] != UINT64_C(0xc60032886fea49f9) ||
+       x[2] != UINT64_C(0x513f890e8e8ac977) ||
+       x[3] != UINT64_C(0x26a201c7f064d21f)){
+      printf("ERROR: Curve25519: 1*P not equal P.\n");
+      error = true;
+    }
+  }
+  if(!error){
+    exp[0] = 0x09016c50ef6a55f5;
+    exp[1] = 0x7f448780f638bfa8;
+    exp[2] = 0xa744ef5ede047afc;
+    exp[3] = 0xb10bad3ebb3de1c7;
+    x[0] = 0x4e97512a574d8906;
+    x[1] = 0xc60032886fea49f9;
+    x[2] = 0x513f890e8e8ac977;
+    x[3] = 0x26a201c7f064d21f;
+    z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+    curve25519_mult(x, z, exp);
+    f_255_19_multiplicative_inverse(z);
+    f_255_19_multiply(x, z);
+    if(x[0] != UINT64_C(0x7a4223ddc70f90e8) ||
+       x[1] != UINT64_C(0xb2718b9c65357e50) ||
+       x[2] != UINT64_C(0xbad9ca6c1722da1b) ||
+       x[3] != UINT64_C(0x9b7d2292f552dd3d)){
+      printf("ERROR: Curve25519: xP with wrong result.\n");
+      error = true;
+    }
+  }
+  assert("Unit Test: 'curve25519_mult'", !error);
+}
+
 /*void test_initialization(void){
   struct connection *c;
   _Winit_network(malloc, free, malloc, free);
@@ -433,6 +495,7 @@ int main(int argc, char **argv){
   test_f_255_19_multiplicative_inverse();
   test_curve25519_double();
   test_curve25519_add();
+  test_curve25519_mult();
   //test_initialization();
   imprime_resultado();
   return 0;

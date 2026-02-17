@@ -899,6 +899,102 @@ void curve25519_add(uint64_t x1[4], uint64_t z1[4],
 }
 @
 
+Sendo capaz calcular o dobro de um ponto na curva e somar dois pontos
+em tal contexto, o próximo passo é implementar a multiplicação por
+escalar. Dado um inteiro, $k$, e um ponto na curva $P$, o valor de
+$x\cdot P$ é o de sucessivas somas do ponto $P$ um total de $k$
+vezes. Isso pode ser implementado em um loop simples, mas isso seria
+uma péssima ideia. Tal implementação levaria mais tempo para calcular
+$k$ maiores que menores, e isso permitiria que por meio de uma medição
+de tempo, outras pessoas descobrissem qual o valor de $k$. Para usar
+tal código em criptografia, informações sobre tal valor não podem
+vazar de nenhuma forma.
+
+O RFC 7748, em sua Seção 5 possui uma descrição de algoritmo que
+sempre roda em tempo constante e não vaza informações sobre o valor de
+$k$. Os algoritmos descritos lá são implementados abaixo:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void cswap(int swap, uint64_t x2[4], uint64_t z2[4],
+                     uint64_t x3[4], uint64_t z3[4]){
+  uint64_t dummy[4];
+  uint64_t mask = ((uint64_t) -swap);
+  dummy[0] = (x2[0] ^ x3[0]) & mask;
+  dummy[1] = (x2[1] ^ x3[1]) & mask;
+  dummy[2] = (x2[2] ^ x3[2]) & mask;
+  dummy[3] = (x2[3] ^ x3[3]) & mask;
+  x2[0] ^= dummy[0]; x2[1] ^= dummy[1];
+  x2[2] ^= dummy[2]; x2[3] ^= dummy[3];
+  x3[0] ^= dummy[0]; x3[1] ^= dummy[1];
+  x3[2] ^= dummy[2]; x3[3] ^= dummy[3];
+  dummy[0] = (z2[0] ^ z3[0]) & mask;
+  dummy[1] = (z2[1] ^ z3[1]) & mask;
+  dummy[2] = (z2[2] ^ z3[2]) & mask;
+  dummy[3] = (z2[3] ^ z3[3]) & mask;
+  z2[0] ^= dummy[0]; z2[1] ^= dummy[1];
+  z2[2] ^= dummy[2]; z2[3] ^= dummy[3];
+  z3[0] ^= dummy[0]; z3[1] ^= dummy[1];
+  z3[2] ^= dummy[2]; z3[3] ^= dummy[3];  
+}
+void curve25519_mult(uint64_t x[4], uint64_t z[4], uint64_t scalar[4]){
+  int i, swap;
+  uint64_t one[4], zero[4];
+  uint64_t x2[4], z2[4], x3[4], z3[4];
+  zero[0] = zero[1] = zero[2] = zero[3] = 0x0;
+  one[0] = one[1] = one[2] = 0x0; one[3] = 0x1;
+  memcpy(x2, one, sizeof(uint64_t) * 4);
+  memcpy(z2, zero, sizeof(uint64_t) * 4); // X2 = 0
+  memcpy(x3, x, sizeof(uint64_t) * 4);
+  memcpy(z3, z, sizeof(uint64_t) * 4); // X3 = X
+  swap = 0;
+  for(i = 254; i >= 0; i --){
+    uint64_t a[4], b[4], aa[4], bb[4], e[4], c[4], d[4], da[4], cb[4];
+    int bit = (((scalar[3 - (i / 64)]) >> (i % 64)) & 0x1);
+    swap ^= bit;
+    cswap(swap, x2, z2, x3, z3);
+    swap = bit;
+    memcpy(a, x2, sizeof(uint64_t) * 4);
+    f_255_19_add(a, z2); // A = X2 + Z2
+    memcpy(aa, a, sizeof(uint64_t) * 4);
+    f_255_19_multiply(aa, aa); // AA = A*A
+    memcpy(b, z2, sizeof(uint64_t) * 4);
+    f_255_19_additive_inverse(b);
+    f_255_19_add(b, x2); // B = X2-Z2
+    memcpy(bb, b, sizeof(uint64_t) * 4);
+    f_255_19_multiply(bb, bb); // BB = B*B
+    memcpy(e, bb, sizeof(uint64_t) * 4);
+    f_255_19_additive_inverse(e);
+    f_255_19_add(e, aa); // E = AA-BB
+    memcpy(c, x3, sizeof(uint64_t) * 4);
+    f_255_19_add(c, z3); // C = X3 + Z3
+    memcpy(d, z3, sizeof(uint64_t) * 4);
+    f_255_19_additive_inverse(d);
+    f_255_19_add(d, x3); // D = X3-Z3
+    memcpy(da, d, sizeof(uint64_t) * 4);
+    f_255_19_multiply(da, a); // DA = D*A
+    memcpy(cb, c, sizeof(uint64_t) * 4);
+    f_255_19_multiply(cb, b); // CB = C*B
+    memcpy(x3, da, sizeof(uint64_t) * 4);
+    f_255_19_add(x3, cb);
+    f_255_19_multiply(x3, x3); // X3 = (DA+CB)^2
+    memcpy(z3, cb, sizeof(uint64_t) * 4);
+    f_255_19_additive_inverse(z3);
+    f_255_19_add(z3, da);
+    f_255_19_multiply(z3, z3);
+    f_255_19_multiply(z3, x); // Z3 = X*(DA-CB)^2
+    memcpy(x2, aa, sizeof(uint64_t) * 4);
+    f_255_19_multiply(x2, bb); // X2 = AA*BB
+    z2[0] = z2[1] = z2[2] = 0x0; z2[3] = 121665;
+    f_255_19_multiply(z2, e);
+    f_255_19_add(z2, aa);
+    f_255_19_multiply(z2, e); // Z2 = E*(AA+121666*E)
+  }
+  cswap(swap, x2, z2, x3, z3);
+  memcpy(x, x2, sizeof(uint64_t) * 4);
+  memcpy(z, z2, sizeof(uint64_t) * 4);
+}
+@
+
 \secao{Referências}
 
 \referencia{Bernstein, D. J., Yang B.-Y. (2019) ``Fast Constant Time
