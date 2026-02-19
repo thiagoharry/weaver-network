@@ -80,13 +80,16 @@ de inicialização também deve receber pares de função que fazem
 alocação e desalocação de memória. Um par para alocações temporárias e
 outro para alocações permanentes. Adicionar este tipo de suporte a
 gerenciadores de memória personalizados é algo que todo módulo Weaver
-faz.
+faz. Além disso, a função recebe uma outra função que corresponde a um
+gerador de número aleatórios criptograficamente seguro. Ao ser
+invocada, tal função deve gerar 64 bits aleatórios. 
 
 @<Declaração de Função (network.h)@>=
 void _Winit_network(void *(*permanent_alloc)(size_t),
                     void (*permanent_free)(void *),
                     void *(*temporary_alloc)(size_t),
-                    void (*temporary_free)(void *));
+                    void (*temporary_free)(void *),
+                    uint64_t (*rand)(void));
 void _Wfinish_network(void);
 @
 
@@ -227,16 +230,19 @@ static void *(*permanent_alloc)(size_t) = malloc;
 static void *(*temporary_alloc)(size_t) = malloc;
 static void (*permanent_free)(void *) = free;
 static void (*temporary_free)(void *) = free;
+static uint64_t (*random_function)(void) = NULL;
 @
 
 @<Definição de Funções da API (network.c)@>=
 // A função de inicialização:
 void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
-                    void *(*t_alloc)(size_t), void (*t_free)(void *)){
+                    void *(*t_alloc)(size_t), void (*t_free)(void *),
+                    uint64_t (*rand)(void)){
   permanent_alloc = p_alloc;
   permanent_free = p_free;
   temporary_alloc = t_alloc;
-  temporary_free = t_free;  
+  temporary_free = t_free;
+  random_function  = rand;
 #if defined(_WIN32) // Windows:
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
@@ -992,6 +998,37 @@ void curve25519_mult(uint64_t x[4], uint64_t z[4], uint64_t scalar[4]){
   cswap(swap, x2, z2, x3, z3);
   memcpy(x, x2, sizeof(uint64_t) * 4);
   memcpy(z, z2, sizeof(uint64_t) * 4);
+}
+@
+
+Caso interpretemos o grupo de pontos da curva elíptica como um grupo
+multiplicativo, ao invés de aditivo, então a multiplicação por escalar
+passa a ser visto como uma exponenciação. Esta é a convenção mais
+comum na criptografia, onde diz-se que tal exponenciação é difícil de
+ser revertida e equivale ao problema de calcular o logaritmo discreto.
+
+Por causa disso, uma operação criptográfica bastante comum é gerar um
+expoente aleatório (que deve ser um múltiplo de 8, menor que $2^{255}$
+e maior que $2^{254}-1$ para fins de segurança). O expoente é
+considerado uma chave secreta. Elevar o ponto $x=9$ à este expoente
+gera uma chave pública. Para calcular tais operações de forma mais
+simples, geramos a seguinte função:
+
+@<Funções Auxiliares Locais (network.c)@>+=
+void curve25519_keygen(uint64_t secret_key[4], uint64_t public_key[4]){
+  uint64_t g[4], z[4];
+  int i;
+  g[0] = g[1] = g[2] = 0x0; g[3] = 0x9;
+  z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+  for(i = 0; i < 4; i ++)
+    secret_key[i] = random_function();
+  secret_key[3] &= 0xfffffffffffffff8;
+  secret_key[0] &= 0x7fffffffffffffff;
+  secret_key[0] |= 0x4000000000000000;
+  curve25519_mult(g, z, secret_key);
+  f_255_19_multiplicative_inverse(z);
+  f_255_19_multiply(g, z);
+  memcpy(public_key, g, sizeof(uint64_t)* 4);
 }
 @
 

@@ -23,6 +23,10 @@ void imprime_resultado(void){
 	 numero_de_testes, acertos, falhas);
 }
 
+uint64_t dummy_rand(void){
+  return 0x0;
+}
+
 void assert(char *descricao, bool valor){
   char pontos[72], *s = descricao;
   size_t tamanho_string = 0;
@@ -469,6 +473,30 @@ void test_curve25519_mult(void){
   assert("Unit Test: 'curve25519_mult'", !error);
 }
 
+void test_curve25519_keygen(void){
+  bool error = false;
+  uint64_t pk[4], sk[4];
+  curve25519_keygen(sk, pk);
+  if(sk[3] % 8 != 0 || sk[0] >= 0x8000000000000000 ||
+     sk[0] < 0x4000000000000000){
+    printf("ERROR: Curve25519: Keygen: Secret key is not clamped.\n");
+    error = true;
+  }
+  if(!error){
+    uint64_t g[4], z[4];
+    g[0] = g[1] = g[2] = 0x0; g[3] = 0x9;
+    z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+    curve25519_mult(g, z, sk);
+    f_255_19_multiplicative_inverse(z);
+    f_255_19_multiply(g, z);
+    if(g[0] != pk[0] || g[1] != pk[1] || g[2] != pk[2] || g[3] != pk[3]){
+      printf("ERROR: Curve25519: Keygen: Inconsistent keys.\n");
+      error = true;
+    }
+  }
+  assert("Unit Test: 'curve25519_keygen'", !error);
+}
+
 /*void test_initialization(void){
   struct connection *c;
   _Winit_network(malloc, free, malloc, free);
@@ -487,6 +515,7 @@ void test_curve25519_mult(void){
   }*/
 
 int main(int argc, char **argv){
+  _Winit_network(malloc, free, malloc, free, dummy_rand);
   test_detect_address_type();
   test_connect_socket();
   test_f_255_19_add();
@@ -496,6 +525,7 @@ int main(int argc, char **argv){
   test_curve25519_double();
   test_curve25519_add();
   test_curve25519_mult();
+  test_curve25519_keygen();
   //test_initialization();
   imprime_resultado();
   return 0;

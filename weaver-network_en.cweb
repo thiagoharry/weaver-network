@@ -70,13 +70,17 @@ initialization function to reinitialize this module). The
 initialization function must also receive pairs of functions for
 memory allocation and deallocation: one pair for temporary allocations
 and another for permanent allocations. Adding this support for custom
-memory managers is performed by all Weaver modules.
+memory managers is performed by all Weaver modules. Additionally, the
+function receives another function that corresponds to a
+cryptographically secure random number generator. When invoked, this
+function must generate 64 random bits.
 
 @<Function Declaration (network.h)@>=
 void _Winit_network(void *(*permanent_alloc)(size_t),
                     void (*permanent_free)(void *),
                     void *(*temporary_alloc)(size_t),
-                    void (*temporary_free)(void *));
+                    void (*temporary_free)(void *),
+                    uint64_t (*rand)(void));
 void _Wfinish_network(void);
 @
 
@@ -215,15 +219,18 @@ static void *(*permanent_alloc)(size_t) = malloc;
 static void *(*temporary_alloc)(size_t) = malloc;
 static void (*permanent_free)(void *) = free;
 static void (*temporary_free)(void *) = free;
+static uint64_t (*random_function)(void) = NULL;
 @
 
 @<API Functions Definition (network.c)@>=
 void _Winit_network(void *(*p_alloc)(size_t), void (*p_free)(void *),
-                    void *(*t_alloc)(size_t), void (*t_free)(void *)){
+                    void *(*t_alloc)(size_t), void (*t_free)(void *),
+                    uint64_t (*rand)(void)){
   permanent_alloc = p_alloc;
   permanent_free = p_free;
   temporary_alloc = t_alloc;
-  temporary_free = t_free;  
+  temporary_free = t_free;
+  random_function = rand;
 #if defined(_WIN32) // Windows:
   WSADATA WsaData;
   WSAStartup(MAKEWORD(2,2), &WsaData);
@@ -952,6 +959,38 @@ void curve25519_mult(uint64_t x[4], uint64_t z[4], uint64_t scalar[4]){
   cswap(swap, x2, z2, x3, z3);
   memcpy(x, x2, sizeof(uint64_t) * 4);
   memcpy(z, z2, sizeof(uint64_t) * 4);
+}
+@
+
+If we interpret the group of points on the elliptic curve as a
+multiplicative group rather than an additive one, then scalar
+multiplication becomes viewed as exponentiation. This is the most
+common convention in cryptography, where such exponentiation is said
+to be hard to reverse and equivalent to the problem of computing the
+discrete logarithm.
+
+Because of this, a fairly common cryptographic operation is to
+generate a random exponent (which, for security purposes, must be a
+multiple of 8, less than $2^{255}$, and greater than $2^{254} -
+1$). The exponent is considered a secret key. Raising the point $x =
+9$ to this exponent produces a public key. To compute such operations
+more conveniently, we define the following function:
+
+@<Auxiliary Local Functions (network.c)@>+=
+void curve25519_keygen(uint64_t secret_key[4], uint64_t public_key[4]){
+  uint64_t g[4], z[4];
+  int i;
+  g[0] = g[1] = g[2] = 0x0; g[3] = 0x9;
+  z[0] = z[1] = z[2] = 0x0; z[3] = 0x1;
+  for(i = 0; i < 4; i ++)
+    secret_key[i] = random_function();
+  secret_key[3] &= 0xfffffffffffffff8;
+  secret_key[0] &= 0x7fffffffffffffff;
+  secret_key[0] |= 0x4000000000000000;
+  curve25519_mult(g, z, secret_key);
+  f_255_19_multiplicative_inverse(z);
+  f_255_19_multiply(g, z);
+  memcpy(public_key, g, sizeof(uint64_t)* 4);
 }
 @
 
