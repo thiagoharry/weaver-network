@@ -479,7 +479,133 @@ f_255_19_multiplicative_inverse(z);
 f_255_19_multiply(g,z);
 memcpy(public_key,g,sizeof(uint64_t)*4);
 }
-/*:24*/
+/*:24*//*25:*/
+#line 1086 "weaver-network.cweb"
+
+unsigned char*tls13_client_hello(char*hostname,uint64_t pk[4],
+size_t*msg_size){
+int i;
+uint64_t*p;
+unsigned char*hello;
+uint16_t hostname_size= strlen(hostname);
+*msg_size= 183+hostname_size;
+hello= (unsigned char*)temporary_alloc(*msg_size);
+
+hello[0]= 0x16;
+
+hello[1]= 0x03;hello[2]= 0x01;
+{
+uint16_t size= *msg_size-5;
+hello[3]= size/256;hello[4]= size%256;
+}
+
+hello[5]= 0x01;
+{
+uint32_t size= *msg_size-9;
+hello[6]= (size>>16)%256;hello[7]= (size>>8)%256;
+hello[8]= size%256;
+}
+
+
+hello[9]= hello[10]= 0x03;
+
+p= ((uint64_t*)&(hello[11]));
+*p= random_function();p++;
+*p= random_function();p++;
+*p= random_function();p++;
+*p= random_function();p++;
+
+hello[43]= 0x20;
+
+
+p= ((uint64_t*)&(hello[44]));
+*p= random_function();p++;
+*p= random_function();p++;
+*p= random_function();p++;
+*p= random_function();p++;
+
+hello[76]= 0x0;hello[77]= 0x02;
+
+hello[78]= 0x13;hello[79]= 0x01;
+
+hello[80]= 0x01;hello[81]= 0x00;
+
+{
+uint16_t size= *msg_size-90;
+hello[82]= size/256;hello[83]= size%256;
+}
+
+hello[84]= hello[85]= 0x00;
+{
+uint16_t size= hostname_size+5;
+hello[86]= size/256;hello[87]= size%256;
+}
+{
+uint16_t size= hostname_size+3;
+hello[88]= size/256;hello[89]= size%256;
+}
+
+hello[90]= 0x00;
+{
+uint16_t size= hostname_size;
+hello[91]= size/256;hello[92]= size%256;
+}
+
+memcpy(&(hello[93]),hostname,hostname_size);
+
+hello[93+hostname_size]= 0x00;hello[94+hostname_size]= 0x0a;
+
+hello[95+hostname_size]= 0x00;hello[96+hostname_size]= 0x04;
+
+hello[97+hostname_size]= 0x00;hello[98+hostname_size]= 0x02;
+
+hello[99+hostname_size]= 0x00;hello[100+hostname_size]= 0x1d;
+
+hello[101+hostname_size]= 0x00;hello[102+hostname_size]= 0x0d;
+
+hello[103+hostname_size]= 0x00;hello[104+hostname_size]= 0x1e;
+
+hello[105+hostname_size]= 0x00;hello[106+hostname_size]= 0x1c;
+
+hello[107+hostname_size]= 0x04;hello[108+hostname_size]= 0x03;
+hello[109+hostname_size]= 0x05;hello[110+hostname_size]= 0x03;
+hello[111+hostname_size]= 0x06;hello[112+hostname_size]= 0x03;
+hello[113+hostname_size]= 0x08;hello[114+hostname_size]= 0x07;
+hello[115+hostname_size]= 0x08;hello[116+hostname_size]= 0x08;
+hello[117+hostname_size]= 0x08;hello[118+hostname_size]= 0x09;
+hello[119+hostname_size]= 0x08;hello[120+hostname_size]= 0x0a;
+hello[121+hostname_size]= 0x08;hello[122+hostname_size]= 0x0b;
+hello[123+hostname_size]= 0x08;hello[124+hostname_size]= 0x04;
+hello[125+hostname_size]= 0x08;hello[126+hostname_size]= 0x05;
+hello[127+hostname_size]= 0x08;hello[128+hostname_size]= 0x06;
+hello[129+hostname_size]= 0x04;hello[130+hostname_size]= 0x01;
+hello[131+hostname_size]= 0x05;hello[132+hostname_size]= 0x01;
+hello[133+hostname_size]= 0x06;hello[134+hostname_size]= 0x01;
+
+hello[135+hostname_size]= 0x00;hello[136+hostname_size]= 0x2b;
+
+hello[137+hostname_size]= 0x00;hello[138+hostname_size]= 0x03;
+
+hello[139+hostname_size]= 0x02;
+
+hello[140+hostname_size]= 0x03;hello[141+hostname_size]= 0x04;
+
+hello[142+hostname_size]= 0x00;hello[143+hostname_size]= 0x33;
+
+hello[144+hostname_size]= 0x00;hello[145+hostname_size]= 0x26;
+
+hello[146+hostname_size]= 0x00;hello[147+hostname_size]= 0x24;
+
+hello[148+hostname_size]= 0x00;hello[149+hostname_size]= 0x1d;
+
+hello[150+hostname_size]= 0x00;hello[151+hostname_size]= 0x20;
+
+for(i= 0;i<32;i++){
+hello[152+hostname_size+i]= (pk[3-(i/8)]>>((i%4)*8))%256;
+}
+return hello;
+}
+/*:25*/
 #line 173 "weaver-network.cweb"
 
 /*9:*/

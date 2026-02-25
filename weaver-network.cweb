@@ -1032,6 +1032,183 @@ void curve25519_keygen(uint64_t secret_key[4], uint64_t public_key[4]){
 }
 @
 
+\secao{Protocolos}
+
+\subsecao{O Protocolo TLS 1.3}
+
+O Protocolo TLS 1.3 é um protocolo entre duas máquinas que cumpre dois
+objetivos:
+
+a) As duas máquinas trocam um valor secreto que não pode ser
+interceptado, mesmo que o meio de comunicação seja inseguro. Este
+segredo pode ser usado para derivar chaves simpetricas para
+criptografia e autenticação de mensagens.
+
+b) As máquinas podem provar sua autenticidade apresentando
+certificados digitais assinados por autoridades tidas como confiáveis
+contendo suas chaves públicas e sua identidade. No nosso caso, nunca
+faremos isso. Mas esperamos que servidores externos provem sua
+identidade desta forma para termos certeza de que estamos nos
+conectando com uma máquina confiável.
+
+Uma comunicação típica neste protocolo envolce duas
+mensagens. Primeiro enviamos ao servidor uma mensagem dizendo que
+queremos iniciar o protocolo, informando quais algoritmos podemos usar
+e também enviando uma chave pública criada por
+\monoespaco{curve25519\_keygen}.
+
+A resposta do servidor é seu certificado digital e sua própria chave
+pública também gerada por seu \monoespaco{curve25519\_keygen} ou
+função equivalente. Podemos nos certificar que o servidor é quem diz
+ser conferindo seu certificado, e usando sua chave pública para
+verificar a assinatura digital que ele fez em um resumo das mensagens
+que trocamos. Se o servidor passar no teste, podemos obter o segredo
+compartilhado multiplicando sua chave pública pela constante igual à
+nossa chave privada com \monoespaco{curve25519\_multiply}.
+
+Uma mensagem de ClientHello que geraremos terá um total de 157 bytes
+mais os bytes necessários para indicar na mensagem o nome do
+servidor. Vamos construir ela diretamente aqui:
+
+506 nibbles (253 bytes)
+16030100f8010000f40303000102030405060708090a0b
+0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 e0 e1
+e2 e3 e4 e5 e6 e7 e8 e9 ea eb ec ed ee ef f0 f1 f2 f3 f4 f5 f6 f7 f8
+f9 fa fb fc fd fe ff 00 08 13 02 13 03 13 01 00 ff 01 00 00 a3 00 00
+00 18 00 16 00 00 13 65 78 61 6d 70 6c 65 2e 75 6c 66 68 65 69 6d 2e
+6e 65 74 00 0b 00 04 03 00 01 02 00 0a 00 16 00 14 00 1d 00 17 00 1e
+00 19 00 18 01 00 01 01 01 02 01 03 01 04 00 23 00 00 00 16 00 00 00
+17 00 00 00 0d 00 1e 00 1c 04 03 05 03 06 03 08 07 08 08 08 09 08 0a
+08 0b 08 04 08 05 08 06 04 01 05 01 06 01 00 2b 00 03 02 03 04 00 2d
+00 02 01 01 00 33 00 26 00 24 00 1d 00 20 35 80 72 d6 36 58 80 d1 ae
+ea 32 9a df 91 21 38 38 51 ed 21 a2 8e 3b 75 e9 65 d0 d2 cd 16 62 54
+
+@<Funções Auxiliares Locais (network.c)@>+=
+unsigned char *tls13_client_hello(char *hostname, uint64_t pk[4],
+                                  size_t *msg_size){
+ int i;
+ uint64_t *p;
+ unsigned char *hello;
+ uint16_t hostname_size = strlen(hostname);
+ *msg_size = 183 + hostname_size;
+ hello = (unsigned char *) temporary_alloc(*msg_size);
+ // Tipo da mensagem: handshake:
+ hello[0] = 0x16;
+ // Versão do protocolo: 1.3:
+ hello[1] = 0x03; hello[2] = 0x01;
+ {  // Tamanho dos bytes restantes:
+   uint16_t size = *msg_size - 5;
+   hello[3] = size / 256; hello[4] = size % 256;
+ }
+ // Tipo de mensagem: ClientHello:
+ hello[5] = 0x01;
+ { // Tamanho do CLientHello:
+   uint32_t size = *msg_size - 9;
+   hello[6] = (size >> 16) % 256; hello[7] = (size >> 8) % 256;
+   hello[8] = size % 256;
+ }
+ // Versão do cliente: Marcamos TLS 1.2 por questões de
+ // interoperabilidade. Todo TLS 1.3 se disfarça de TLS 1.2:
+ hello[9] = hello[10] = 0x03;
+ // 32 bytes de dados aleatórios:
+ p = ((uint64_t *) &(hello[11]));
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+ // Quantidade de bytes de informação de sessão: 32 bytes:
+ hello[43] = 0x20;
+ // Informação de sessão. Apenas valores aleatórios para nos
+ // disfarçarmos de TLS 1.2:
+  p = ((uint64_t *) &(hello[44]));
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+ *p = random_function(); p ++;
+  // 2 bytes de dados com quais cifras de encriptação suportamos:
+  hello[76] = 0x0; hello[77] = 0x02;
+  // Suportamos: TLS_AES_128_GCM_SHA256
+  hello[78] = 0x13; hello[79] = 0x01;
+  // TLS 1.3 não suporta compressão:
+  hello[80] = 0x01; hello[81] = 0x00;
+  // Tamanho da sessão de extenção:
+  {
+    uint16_t size = *msg_size - 90;
+    hello[82] = size / 256; hello[83] = size % 256;
+  }
+  // Extensão: SNI: O nome do servidor
+  hello[84] = hello[85] = 0x00;
+  { // Tamanho da extensão de nome do servidor:
+    uint16_t size = hostname_size + 5;
+    hello[86] = size / 256; hello[87] = size % 256;
+  }
+  { // Tamanho de bytes da lista abaixo
+    uint16_t size = hostname_size + 3;
+    hello[88] = size / 256; hello[89] = size % 256; 
+  }
+  // O primeiro item da lista é um DNS Hostname:
+  hello[90] = 0x00;
+  {  // Tamanho do hostname
+    uint16_t size = hostname_size;
+    hello[91] = size / 256; hello[92] = size % 256;
+  }
+  // Copia hostname:
+  memcpy(&(hello[93]), hostname, hostname_size);
+  // Extensão: Grupos suportados:
+  hello[93 + hostname_size] = 0x00; hello[94 + hostname_size] = 0x0a;
+  // Tamanho da extensão: 4 bytes
+  hello[95 + hostname_size] = 0x00; hello[96 + hostname_size] = 0x04;
+  // Tamanho da lista de curvas: 2 bytes:
+  hello[97 + hostname_size] = 0x00; hello[98 + hostname_size] = 0x02;
+  // Curva: x25519
+  hello[99 + hostname_size] = 0x00; hello[100 + hostname_size] = 0x1d;
+  // Extensão: Algoritmos de Assinatura
+  hello[101 + hostname_size] = 0x00; hello[102 + hostname_size] = 0x0d;
+  // Tamanho da extensão: 30 bytes
+  hello[103 + hostname_size] = 0x00; hello[104 + hostname_size] = 0x1e;
+  // Tamanho da lista abaixo: 28 bytes
+  hello[105 + hostname_size] = 0x00; hello[106 + hostname_size] = 0x1c;
+  // Assinaturas
+  hello[107 + hostname_size] = 0x04; hello[108 + hostname_size] = 0x03;
+  hello[109 + hostname_size] = 0x05; hello[110 + hostname_size] = 0x03;
+  hello[111 + hostname_size] = 0x06; hello[112 + hostname_size] = 0x03;
+  hello[113 + hostname_size] = 0x08; hello[114 + hostname_size] = 0x07;
+  hello[115 + hostname_size] = 0x08; hello[116 + hostname_size] = 0x08;
+  hello[117 + hostname_size] = 0x08; hello[118 + hostname_size] = 0x09;
+  hello[119 + hostname_size] = 0x08; hello[120 + hostname_size] = 0x0a;
+  hello[121 + hostname_size] = 0x08; hello[122 + hostname_size] = 0x0b;
+  hello[123 + hostname_size] = 0x08; hello[124 + hostname_size] = 0x04;
+  hello[125 + hostname_size] = 0x08; hello[126 + hostname_size] = 0x05;
+  hello[127 + hostname_size] = 0x08; hello[128 + hostname_size] = 0x06;
+  hello[129 + hostname_size] = 0x04; hello[130 + hostname_size] = 0x01;
+  hello[131 + hostname_size] = 0x05; hello[132 + hostname_size] = 0x01;
+  hello[133 + hostname_size] = 0x06; hello[134 + hostname_size] = 0x01;
+  // Extensão: Supported Versions
+  hello[135 + hostname_size] = 0x00; hello[136 + hostname_size] = 0x2b;
+  // Tamanho da extensão: 3 bytes
+  hello[137 + hostname_size] = 0x00; hello[138 + hostname_size] = 0x03;
+  // Tamanho da versão TLS: 2 bytes
+  hello[139 + hostname_size] = 0x02;
+  // TLS 1.3:
+  hello[140 + hostname_size] = 0x03; hello[141 + hostname_size] = 0x04;
+  // Extensão: Key Share
+  hello[142 + hostname_size] = 0x00; hello[143 + hostname_size] = 0x33;
+  // Tamanho da extensão: 38 bytes
+  hello[144 + hostname_size] = 0x00; hello[145 + hostname_size] = 0x26;
+  // Tamanho da chave seguinte: 36 bytes:
+  hello[146 + hostname_size] = 0x00; hello[147 + hostname_size] = 0x24;
+  // Definindo a chave como sendo x25519:
+  hello[148 + hostname_size] = 0x00; hello[149 + hostname_size] = 0x1d;
+  // A chave tem 32 bytes:
+  hello[150 + hostname_size] = 0x00; hello[151 + hostname_size] = 0x20;
+  // A chave em formato little endian:
+  for(i = 0; i < 32; i ++){
+    hello[152 + hostname_size + i] = (pk[3-(i/8)] >> ((i%4)*8)) % 256;
+  }
+  return hello;
+}
+@
+
 \secao{Referências}
 
 \referencia{Bernstein, D. J., Yang B.-Y. (2019) ``Fast Constant Time

@@ -497,6 +497,46 @@ void test_curve25519_keygen(void){
   assert("Unit Test: 'curve25519_keygen'", !error);
 }
 
+void test_tls13(void){
+  bool error = false;
+  unsigned char *client_hello, server_hello[1024];
+  uint64_t pk[4], sk[4];
+  size_t sent = 0, size;
+  ssize_t ret;
+  int sock;
+  curve25519_keygen(sk, pk);
+  client_hello = tls13_client_hello("example.org", pk, &size);
+  sock = connect_socket("example.org", "443", SOCK_STREAM);
+  while(sent < size){
+    ret =  send(sock, client_hello + sent, size - sent, 0);
+    if(ret == -1){
+      printf("BOOM\n");
+      exit(1);
+    }
+    sent += ret;
+  }
+  //printf("wait response\n");
+  server_hello[0] = 0x00;
+  ret = recv(sock, server_hello, 1024, 0);
+  if(ret == 0){
+    printf("ERROR: TLS 1.3: ClientHello did not get response.\n");
+    error = true;
+  }
+  else if(server_hello[0] != 0x16){
+    printf("ERROR: TLS 1.3: Server did not sent ServerHello.\n");
+    if(server_hello[0] == 0x15){
+      int i;
+      printf("ERROR: Instead, we got: ALERT: ");
+      for(i = 0; i < (server_hello[3] * 256) + server_hello[4]; i ++)
+	printf(" %x ", server_hello[5 + i]);
+      printf("\n");
+
+    }
+    error = true;
+  }
+  assert("Protocol Test: TLS 1.3 ClientHello", !error);
+}
+
 /*void test_initialization(void){
   struct connection *c;
   _Winit_network(malloc, free, malloc, free);
@@ -526,6 +566,7 @@ int main(int argc, char **argv){
   test_curve25519_add();
   test_curve25519_mult();
   test_curve25519_keygen();
+  test_tls13();
   //test_initialization();
   imprime_resultado();
   return 0;
