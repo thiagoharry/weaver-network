@@ -510,7 +510,6 @@ void test_tls13(void){
   while(sent < size){
     ret =  send(sock, client_hello + sent, size - sent, 0);
     if(ret == -1){
-      printf("BOOM\n");
       exit(1);
     }
     sent += ret;

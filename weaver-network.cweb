@@ -1066,22 +1066,9 @@ que trocamos. Se o servidor passar no teste, podemos obter o segredo
 compartilhado multiplicando sua chave pública pela constante igual à
 nossa chave privada com \monoespaco{curve25519\_multiply}.
 
-Uma mensagem de ClientHello que geraremos terá um total de 157 bytes
+Uma mensagem de ClientHello que geraremos terá um total de 208 bytes
 mais os bytes necessários para indicar na mensagem o nome do
 servidor. Vamos construir ela diretamente aqui:
-
-506 nibbles (253 bytes)
-16030100f8010000f40303000102030405060708090a0b
-0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 e0 e1
-e2 e3 e4 e5 e6 e7 e8 e9 ea eb ec ed ee ef f0 f1 f2 f3 f4 f5 f6 f7 f8
-f9 fa fb fc fd fe ff 00 08 13 02 13 03 13 01 00 ff 01 00 00 a3 00 00
-00 18 00 16 00 00 13 65 78 61 6d 70 6c 65 2e 75 6c 66 68 65 69 6d 2e
-6e 65 74 00 0b 00 04 03 00 01 02 00 0a 00 16 00 14 00 1d 00 17 00 1e
-00 19 00 18 01 00 01 01 01 02 01 03 01 04 00 23 00 00 00 16 00 00 00
-17 00 00 00 0d 00 1e 00 1c 04 03 05 03 06 03 08 07 08 08 08 09 08 0a
-08 0b 08 04 08 05 08 06 04 01 05 01 06 01 00 2b 00 03 02 03 04 00 2d
-00 02 01 01 00 33 00 26 00 24 00 1d 00 20 35 80 72 d6 36 58 80 d1 ae
-ea 32 9a df 91 21 38 38 51 ed 21 a2 8e 3b 75 e9 65 d0 d2 cd 16 62 54
 
 @<Funções Auxiliares Locais (network.c)@>+=
 unsigned char *tls13_client_hello(char *hostname, uint64_t pk[4],
@@ -1090,7 +1077,7 @@ unsigned char *tls13_client_hello(char *hostname, uint64_t pk[4],
  uint64_t *p;
  unsigned char *hello;
  uint16_t hostname_size = strlen(hostname);
- *msg_size = 183 + hostname_size;
+ *msg_size = 208 + hostname_size;
  hello = (unsigned char *) temporary_alloc(*msg_size);
  // Tipo da mensagem: handshake:
  hello[0] = 0x16;
@@ -1133,7 +1120,7 @@ unsigned char *tls13_client_hello(char *hostname, uint64_t pk[4],
   hello[80] = 0x01; hello[81] = 0x00;
   // Tamanho da sessão de extenção:
   {
-    uint16_t size = *msg_size - 90;
+    uint16_t size = *msg_size - 84;
     hello[82] = size / 256; hello[83] = size % 256;
   }
   // Extensão: SNI: O nome do servidor
@@ -1156,54 +1143,69 @@ unsigned char *tls13_client_hello(char *hostname, uint64_t pk[4],
   memcpy(&(hello[93]), hostname, hostname_size);
   // Extensão: Grupos suportados:
   hello[93 + hostname_size] = 0x00; hello[94 + hostname_size] = 0x0a;
-  // Tamanho da extensão: 4 bytes
-  hello[95 + hostname_size] = 0x00; hello[96 + hostname_size] = 0x04;
-  // Tamanho da lista de curvas: 2 bytes:
-  hello[97 + hostname_size] = 0x00; hello[98 + hostname_size] = 0x02;
+  // Tamanho da extensão: 22 bytes (+18)
+  hello[95 + hostname_size] = 0x00; hello[96 + hostname_size] = 0x16;
+  // Tamanho da lista de curvas: 20 bytes:
+  hello[97 + hostname_size] = 0x00; hello[98 + hostname_size] = 0x14;
   // Curva: x25519
   hello[99 + hostname_size] = 0x00; hello[100 + hostname_size] = 0x1d;
-  // Extensão: Algoritmos de Assinatura
-  hello[101 + hostname_size] = 0x00; hello[102 + hostname_size] = 0x0d;
-  // Tamanho da extensão: 30 bytes
+  hello[101 + hostname_size] = 0x00; hello[102 + hostname_size] = 0x17;
   hello[103 + hostname_size] = 0x00; hello[104 + hostname_size] = 0x1e;
+  hello[105 + hostname_size] = 0x00; hello[106 + hostname_size] = 0x19;
+  hello[107 + hostname_size] = 0x00; hello[108 + hostname_size] = 0x18;
+  hello[109 + hostname_size] = 0x01; hello[110 + hostname_size] = 0x00;
+  hello[111 + hostname_size] = 0x01; hello[112 + hostname_size] = 0x01;
+  hello[113 + hostname_size] = 0x01; hello[114 + hostname_size] = 0x02;
+  hello[115 + hostname_size] = 0x01; hello[116 + hostname_size] = 0x03;
+  hello[117 + hostname_size] = 0x01; hello[118 + hostname_size] = 0x04;
+  // Extensão: Algoritmos de Assinatura
+  hello[119 + hostname_size] = 0x00; hello[120 + hostname_size] = 0x0d;
+  // Tamanho da extensão: 30 bytes
+  hello[121 + hostname_size] = 0x00; hello[122 + hostname_size] = 0x1e;
   // Tamanho da lista abaixo: 28 bytes
-  hello[105 + hostname_size] = 0x00; hello[106 + hostname_size] = 0x1c;
+  hello[123 + hostname_size] = 0x00; hello[124 + hostname_size] = 0x1c;
   // Assinaturas
-  hello[107 + hostname_size] = 0x04; hello[108 + hostname_size] = 0x03;
-  hello[109 + hostname_size] = 0x05; hello[110 + hostname_size] = 0x03;
-  hello[111 + hostname_size] = 0x06; hello[112 + hostname_size] = 0x03;
-  hello[113 + hostname_size] = 0x08; hello[114 + hostname_size] = 0x07;
-  hello[115 + hostname_size] = 0x08; hello[116 + hostname_size] = 0x08;
-  hello[117 + hostname_size] = 0x08; hello[118 + hostname_size] = 0x09;
-  hello[119 + hostname_size] = 0x08; hello[120 + hostname_size] = 0x0a;
-  hello[121 + hostname_size] = 0x08; hello[122 + hostname_size] = 0x0b;
-  hello[123 + hostname_size] = 0x08; hello[124 + hostname_size] = 0x04;
-  hello[125 + hostname_size] = 0x08; hello[126 + hostname_size] = 0x05;
-  hello[127 + hostname_size] = 0x08; hello[128 + hostname_size] = 0x06;
-  hello[129 + hostname_size] = 0x04; hello[130 + hostname_size] = 0x01;
-  hello[131 + hostname_size] = 0x05; hello[132 + hostname_size] = 0x01;
-  hello[133 + hostname_size] = 0x06; hello[134 + hostname_size] = 0x01;
+  hello[125 + hostname_size] = 0x04; hello[126 + hostname_size] = 0x03;
+  hello[127 + hostname_size] = 0x05; hello[128 + hostname_size] = 0x03;
+  hello[129 + hostname_size] = 0x06; hello[130 + hostname_size] = 0x03;
+  hello[131 + hostname_size] = 0x08; hello[132 + hostname_size] = 0x07;
+  hello[133 + hostname_size] = 0x08; hello[134 + hostname_size] = 0x08;
+  hello[135 + hostname_size] = 0x08; hello[136 + hostname_size] = 0x09;
+  hello[137 + hostname_size] = 0x08; hello[138 + hostname_size] = 0x0a;
+  hello[139 + hostname_size] = 0x08; hello[140 + hostname_size] = 0x0b;
+  hello[141 + hostname_size] = 0x08; hello[142 + hostname_size] = 0x04;
+  hello[143 + hostname_size] = 0x08; hello[144 + hostname_size] = 0x05;
+  hello[145 + hostname_size] = 0x08; hello[146 + hostname_size] = 0x06;
+  hello[147 + hostname_size] = 0x04; hello[148 + hostname_size] = 0x01;
+  hello[149 + hostname_size] = 0x05; hello[150 + hostname_size] = 0x01;
+  hello[151 + hostname_size] = 0x06; hello[152 + hostname_size] = 0x01;
   // Extensão: Supported Versions
-  hello[135 + hostname_size] = 0x00; hello[136 + hostname_size] = 0x2b;
+  hello[153 + hostname_size] = 0x00; hello[154 + hostname_size] = 0x2b;
   // Tamanho da extensão: 3 bytes
-  hello[137 + hostname_size] = 0x00; hello[138 + hostname_size] = 0x03;
+  hello[155 + hostname_size] = 0x00; hello[156 + hostname_size] = 0x03;
   // Tamanho da versão TLS: 2 bytes
-  hello[139 + hostname_size] = 0x02;
+  hello[157 + hostname_size] = 0x02;
   // TLS 1.3:
-  hello[140 + hostname_size] = 0x03; hello[141 + hostname_size] = 0x04;
+  hello[158 + hostname_size] = 0x03; hello[159 + hostname_size] = 0x04;
+  // Extensão: PSK Key Exchange Modes
+  hello[160 + hostname_size] = 0x00; hello[161 + hostname_size] = 0x2d;
+  // Tamanho da extensão: 2 bytes
+  hello[162 + hostname_size] = 0x00; hello[163 + hostname_size] = 0x02;
+  // Número de bytes de modos: 1  Modo: Diffie-Hellman 
+  hello[164 + hostname_size] = 0x01; hello[165 + hostname_size] = 0x01;
   // Extensão: Key Share
-  hello[142 + hostname_size] = 0x00; hello[143 + hostname_size] = 0x33;
+  hello[166 + hostname_size] = 0x00; hello[167 + hostname_size] = 0x33;
   // Tamanho da extensão: 38 bytes
-  hello[144 + hostname_size] = 0x00; hello[145 + hostname_size] = 0x26;
+  hello[168 + hostname_size] = 0x00; hello[169 + hostname_size] = 0x26;
   // Tamanho da chave seguinte: 36 bytes:
-  hello[146 + hostname_size] = 0x00; hello[147 + hostname_size] = 0x24;
+  hello[170 + hostname_size] = 0x00; hello[171 + hostname_size] = 0x24;
   // Definindo a chave como sendo x25519:
-  hello[148 + hostname_size] = 0x00; hello[149 + hostname_size] = 0x1d;
+  hello[172 + hostname_size] = 0x00; hello[173 + hostname_size] = 0x1d;
   // A chave tem 32 bytes:
-  hello[150 + hostname_size] = 0x00; hello[151 + hostname_size] = 0x20;
+  hello[174 + hostname_size] = 0x00; hello[175 + hostname_size] = 0x20;
   // A chave em formato little endian:
   for(i = 0; i < 32; i ++){
-    hello[152 + hostname_size + i] = (pk[3-(i/8)] >> ((i%4)*8)) % 256;
+    hello[176 + hostname_size + i] = (pk[3-(i/8)] >> ((i%8)*8)) % 256;
   }
   return hello;
 }
